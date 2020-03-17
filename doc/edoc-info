@@ -1,0 +1,4 @@
+%% encoding: UTF-8
+{application,kyu}.
+{modules,[kyu,kyu_app,kyu_connection,kyu_consumer,kyu_management,kyu_network,
+          kyu_publisher,kyu_sup,kyu_waitress,kyu_worker,kyu_wrangler]}.

@@ -1,0 +1,25 @@
+{application, kyu,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {kyu_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    inets,
+    gproc,
+    lager,
+    poolboy,
+    amqp_client,
+    jsx
+   ]},
+  {env,[
+    {connections, [
+      #{name => <<"localhost">>}
+    ]}
+  ]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

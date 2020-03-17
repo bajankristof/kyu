@@ -1,0 +1,26 @@
+{"1.1.0",
+[{<<"amqp_client">>,{pkg,<<"amqp_client">>,<<"3.8.2">>},0},
+ {<<"credentials_obfuscation">>,
+  {pkg,<<"credentials_obfuscation">>,<<"1.1.0">>},
+  2},
+ {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
+ {<<"gproc">>,{pkg,<<"gproc">>,<<"0.8.0">>},0},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},2},
+ {<<"lager">>,{pkg,<<"lager">>,<<"3.8.0">>},0},
+ {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.2">>},0},
+ {<<"rabbit_common">>,{pkg,<<"rabbit_common">>,<<"3.8.2">>},1},
+ {<<"ranch">>,{pkg,<<"ranch">>,<<"1.7.1">>},2},
+ {<<"recon">>,{pkg,<<"recon">>,<<"2.5.0">>},2}]}.
+[
+{pkg_hash,[
+ {<<"amqp_client">>, <<"B50AC381C3C016A697D6AB8F08367043A08358CFEB8EE97832CCC7D101E59CEF">>},
+ {<<"credentials_obfuscation">>, <<"513793CC20C18AFC9E03E584B436192A751A8344890E03A8741C65C8D6866FAB">>},
+ {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
+ {<<"gproc">>, <<"CEA02C578589C61E5341FCE149EA36CCEF236CC2ECAC8691FBA408E7EA77EC2F">>},
+ {<<"jsx">>, <<"D2F6E5F069C00266CAD52FB15D87C428579EA4D7D73A33669E12679E203329DD">>},
+ {<<"lager">>, <<"3402B9A7E473680CA179FC2F1D827CAB88DD37DD1E6113090C6F45EF05228A1C">>},
+ {<<"poolboy">>, <<"392B007A1693A64540CEAD79830443ABF5762F5D30CF50BC95CB2C1AAAFA006B">>},
+ {<<"rabbit_common">>, <<"6F5653E7BA8BBF76447B126D1AC224E1BE5ED853808542BD67CBCFF87FBD2493">>},
+ {<<"ranch">>, <<"6B1FAB51B49196860B733A49C07604465A47BDB78AA10C1C16A3D199F7F8C881">>},
+ {<<"recon">>, <<"2F7FCBEC2C35034BADE2F9717F77059DC54EB4E929A3049CA7BA6775C0BD66CD">>}]}
+].
