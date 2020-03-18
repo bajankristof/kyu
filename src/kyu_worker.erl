@@ -25,7 +25,9 @@
     init/1,
     handle_call/3,
     handle_cast/2,
-    handle_info/2
+    handle_continue/2,
+    handle_info/2,
+    terminate/2
 ]).
 
 -include("amqp.hrl").
@@ -36,7 +38,8 @@
     name :: kyu_consumer:name(),
     opts :: kyu_consumer:opts(),
     module :: atom(),
-    state :: term()
+    args :: term(),
+    unacked = []
 }).
 
 -callback handle_message(Message :: kyu:message(), State :: term()) ->
@@ -149,55 +152,60 @@ init({Connection, #{name := Name} = Opts}) ->
         name = Name,
         opts = Opts,
         module = maps:get(worker_module, Opts),
-        state = maps:get(worker_state, Opts)
+        args = maps:get(worker_state, Opts)
     }}.
 
 %% @hidden
 handle_call(_, _, State) ->
-    {reply, ok, State}.
+    {noreply, State}.
 
 %% @hidden
-handle_cast({message, Tag, Key, Content}, #state{name = Name, module = Module, state = Current} = State) ->
-    Message = update_message(#{routing_key => Key}, Content),
-    case erlang:apply(Module, handle_message, [Message, Current]) of
-        {ack, Next} ->
-            ok = kyu_wrangler:cast(Name, {ack, Tag}),
-            {noreply, State#state{state = Next}};
-        {reject, Next} ->
-            ok = kyu_wrangler:cast(Name, {reject, Tag}),
-            {noreply, State#state{state = Next}};
-        {remove, Next} ->
-            ok = kyu_wrangler:cast(Name, {remove, Tag}),
-            {noreply, State#state{state = Next}};
-        {stop, Reason, Next} ->
-            ok = kyu_wrangler:cast(Name, {reject, Tag}),
-            {stop, Reason, State#state{state = Next}}
-    end;
+handle_cast({message, Tag, _, _} = Command, #state{unacked = Unacked} = State) ->
+    {noreply, State#state{unacked = Unacked ++ [Tag]}, {continue, Command}};
 handle_cast(_, State) ->
     {noreply, State}.
 
 %% @hidden
-handle_info(Info, #state{module = Module, state = Current} = State) ->
+handle_continue({message, Tag, Key, Content}, #state{module = Module, args = Args} = State) ->
+    Message = maps:put(routing_key, Key, make_message(Content)),
+    case erlang:apply(Module, handle_message, [Message, Args]) of
+        {ack, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
+        {reject, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
+        {remove, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
+        {stop, _, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}}
+    end;
+handle_continue({reply, Tag, {Type, Args}}, #state{name = Name, unacked = Unacked} = State) ->
+    ok = kyu_wrangler:cast(Name, {Type, Tag}),
+    {noreply, State#state{args = Args, unacked = lists:delete(Tag, Unacked)}};
+handle_continue({reply, _, {_, Reason, Args}}, #state{} = State) ->
+    {stop, Reason, State#state{args = Args}};
+handle_continue({noreply, {_, Args}}, #state{} = State) ->
+    {noreply, State#state{args = Args}};
+handle_continue({noreply, {_, Reason, Args}}, #state{} = State) -> 
+    {stop, Reason, State#state{args = Args}};
+handle_continue(_, State) ->
+    {noreply, State}.
+
+%% @hidden
+handle_info(Info, #state{module = Module, args = Args} = State) ->
     Functions = erlang:apply(Module, module_info, [exports]),
     case lists:member({handle_info, 2}, Functions) of
         false -> {noreply, State};
         true ->
-            {noreply, Next} = erlang:apply(Module, handle_info, [Info, Current]),
-            {noreply, State#state{state = Next}}
+            case erlang:apply(Module, handle_info, [Info, Args]) of
+                {noreply, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
+                {stop, _, _} = Return -> {noreply, State, {continue, {noreply, Return}}}
+            end
     end.
 
-%% PRIVATE FUNCTIONS
+%% @hidden
+terminate(_, #state{name = Name, unacked = Unacked}) ->
+    lists:foldl(fun (Tag, ok) ->
+        kyu_wrangler:cast(Name, {reject, Tag})
+    end, ok, Unacked).
 
-make_pool(_, #{name := Name} = Opts) ->
-    Count = maps:get(worker_count, Opts, 1),
-    Prefetch = maps:get(prefetch_count, Opts, 1),
-    Overflow = Count * Prefetch - Count,
-    [
-        {size, Count},
-        {max_overflow, Overflow},
-        {name, ?via(worker, Name)},
-        {worker_module, ?MODULE}
-    ].
+
+%% PRIVATE FUNCTIONS
 
 make_message(#amqp_msg{payload = Payload, props = Props}) ->
     Keys = [headers, priority, expiration, content_type,
@@ -218,5 +226,13 @@ make_message(#amqp_msg{payload = Payload, props = Props}) ->
     end, Keys),
     maps:from_list(Values ++ [{payload, Payload}]).
 
-update_message(Message, #amqp_msg{} = Content) ->
-    maps:merge(Message, make_message(Content)).
+make_pool(_, #{name := Name} = Opts) ->
+    Count = maps:get(worker_count, Opts, 1),
+    Prefetch = maps:get(prefetch_count, Opts, 1),
+    Overflow = Count * Prefetch - Count,
+    [
+        {size, Count},
+        {max_overflow, Overflow},
+        {name, ?via(worker, Name)},
+        {worker_module, ?MODULE}
+    ].

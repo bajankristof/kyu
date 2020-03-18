@@ -25,11 +25,12 @@
     can_consumer_survive/1
 ]).
 
-%% PUBLISHER
+%% FEATURES
 -export([
     can_publish_supervised/1,
     can_ack_message/1,
-    can_reject_message/1
+    can_reject_message/1,
+    can_recover_badmatch/1
 ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -44,7 +45,7 @@
 -define(CTWS, #{}).
 
 suite() -> [
-    {timetrap, 1000}
+    {timetrap, 10000}
 ].
 
 all() -> [
@@ -68,7 +69,8 @@ groups() -> [
     {features, [], [
         can_publish_supervised,
         can_ack_message,
-        can_reject_message
+        can_reject_message,
+        can_recover_badmatch
     ]}
 ].
 
@@ -218,6 +220,24 @@ can_reject_message(Config) ->
     Name = ?config(name, Config),
     ok = start_features(Config, fun
         (Message, State) -> Self ! Message, {reject, State}
+    end),
+    ok = kyu_publisher:publish(Name, #{
+        routing_key => ?CTRK,
+        exchange => ?CTEXG,
+        mandatory => true,
+        execution => async,
+        payload => Name
+    }),
+    receive
+        #{payload := Name} ->
+            receive #{payload := Name} -> stop_features(Config) end
+    end.
+
+can_recover_badmatch(Config) ->
+    Self = self(),
+    Name = ?config(name, Config),
+    ok = start_features(Config, fun
+        (Message, State) -> Self ! Message, badmatch
     end),
     ok = kyu_publisher:publish(Name, #{
         routing_key => ?CTRK,
