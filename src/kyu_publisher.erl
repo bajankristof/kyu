@@ -1,3 +1,5 @@
+%% @doc This module is responsible for creating
+%% and managing amqp publishers.
 -module(kyu_publisher).
 
 -behaviour(gen_server).
@@ -58,65 +60,80 @@
 
 %% API FUNCTIONS
 
+%% @doc Returns a publisher child spec.
 -spec child_spec(Connection :: kyu_connection:name(), Opts :: map()) -> supervisor:child_spec().
 child_spec(Connection, #{name := Name} = Opts) ->
     #{id => ?name(publisher, Name), start => {?MODULE, start_link, [Connection, Opts]}}.
 
+%% @doc Starts a publisher.
 -spec start_link(Connection :: kyu_connection:name(), Opts :: map()) -> {ok, pid()} | {error, term()}.
 start_link(Connection, #{name := Name} = Opts) ->
     gen_server:start_link(?via(publisher, Name), ?MODULE, {Connection, Opts}, []).
 
+%% @doc Makes a gen_server:call/2 to the publisher.
 -spec call(Name :: name(), Request :: term()) -> term().
 call(Name, Request) ->
     gen_server:call(?via(publisher, Name), Request).
 
+%% @doc Makes a gen_server:call/3 to the publisher.
 -spec call(Name :: name(), Request :: term(), Timeout :: timeout()) -> term().
 call(Name, Request, Timeout) ->
     gen_server:call(?via(publisher, Name), Request, Timeout).
 
+%% @doc Makes a gen_server:cast/2 to the publisher.
 -spec cast(Name :: name(), Request :: term()) -> ok.
 cast(Name, Request) ->
     gen_server:cast(?via(publisher, Name), Request).
 
+%% @doc Returns the pid of the publisher.
 %% -spec where(Name :: name()) -> pid() | undefined.
 where(Name) ->
     gproc:where(?server(publisher, Name)).
 
+%% @doc Returns the name of the consumer's connection server.
 -spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
     call(Name, connection).
 
+%% @doc Returns the underlying amqp channel.
 -spec channel(Name :: name()) -> pid() | undefined.
 channel(Name) ->
     call(Name, channel).
 
+%% @doc Returns a value from the publisher's options.
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
 
+%% @doc Publishes a message on the channel.
 -spec publish(Name :: name(), Message :: kyu:message()) -> ok | {error, binary()}.
 publish(Name, Message) ->
     call(Name, make_command(Message)).
 
+%% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
 await(Name) ->
     await(Name, ?DEFAULT_TIMEOUT).
 
+%% @doc Waits for the publisher to successfully setup.
 -spec await(Name :: name(), Timeout :: timeout()) -> ok.
 await(Name, Timeout) ->
     Server = ?server(publisher, Name),
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
+%% @doc Stops the publisher.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(publisher, Name)).
 
+%% @hidden
 -spec ref() -> binary().
 ref() -> base64:encode(erlang:term_to_binary(erlang:make_ref())).
 
 %% CALLBACK FUNCTIONS
 
+%% @hidden
 init({Connection, #{name := Name} = Opts}) ->
     lager:md([{publisher, Name}]),
     lager:debug("Kyu publisher process started"),
@@ -129,6 +146,7 @@ init({Connection, #{name := Name} = Opts}) ->
         opts = Opts
     }, {continue, init}}.
 
+%% @hidden
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call(channel, _, #state{channel = Channel} = State) ->
@@ -147,9 +165,11 @@ handle_call(await, _, #state{channel = _} = State) ->
 handle_call(_, _, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_cast(_, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_continue(init, #state{channel = undefined, connection = Connection, commands = Commands} = State) ->
     case catch kyu_connection:channel(Connection, Commands) of
         {ok, Channel} ->
@@ -174,6 +194,7 @@ handle_continue({init, fin}, #state{name = Name} = State) ->
 handle_continue(_, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_info({'DOWN', Monitor, _, _, normal}, #state{monitor = Monitor} = State) ->
     {noreply, State#state{channel = undefined, monitor = undefined}};
 handle_info({'DOWN', Monitor, _, _, {_, {connection_closing, _}}}, #state{monitor = Monitor} = State) ->
@@ -185,6 +206,7 @@ handle_info(?message(connection, Connection, up), #state{connection = Connection
 handle_info(_, State) ->
     {noreply, State}.
 
+%% @hidden
 terminate(_, #state{channel = undefined}) -> ok;
 terminate(_, #state{channel = Channel}) ->
     amqp_channel:close(Channel).

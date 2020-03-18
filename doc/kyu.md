@@ -1,9 +1,13 @@
 
 
 # Module kyu #
+* [Description](#description)
 * [Data Types](#types)
 * [Function Index](#index)
 * [Function Details](#functions)
+
+This module provides helper functions
+for amqp management.
 
 <a name="types"></a>
 
@@ -24,7 +28,7 @@ message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt;
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-3">declare/3</a></td><td></td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td></td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-3">declare/3</a></td><td>Makes one or more declarations on the amqp channel.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Equivalent to <a href="kyu_publisher.md#publish-2"><tt>kyu_publisher:publish(Publisher, Message)</tt></a>.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -40,6 +44,8 @@ declare(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()<
 </code></pre>
 <br />
 
+Makes one or more declarations on the amqp channel.
+
 <a name="publish-2"></a>
 
 ### publish/2 ###
@@ -48,4 +54,6 @@ declare(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()<
 publish(Publisher::<a href="kyu_publisher.md#type-name">kyu_publisher:name()</a>, Message::<a href="#type-message">message()</a>) -&gt; ok | {error, binary()}
 </code></pre>
 <br />
+
+Equivalent to [`kyu_publisher:publish(Publisher, Message)`](kyu_publisher.md#publish-2).
 

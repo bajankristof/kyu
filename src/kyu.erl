@@ -1,3 +1,5 @@
+%% @doc This module provides helper functions
+%% for amqp management.
 -module(kyu).
 
 -export([
@@ -29,6 +31,7 @@
 }.
 -export_type([message/0]).
 
+%% @equiv kyu_publisher:publish(Publisher, Message)
 -spec publish(
     Publisher :: kyu_publisher:name(),
     Message :: message()
@@ -36,6 +39,7 @@
 publish(Publisher, Message) ->
     kyu_publisher:publish(Publisher, Message).
 
+%% @doc Makes one or more declarations on the amqp channel.
 -spec declare(
     Connection :: kyu_connection:name(),
     Channel :: pid(),

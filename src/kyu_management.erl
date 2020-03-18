@@ -1,3 +1,6 @@
+%% @doc This module provides an interface to communicate
+%% with the RabbitMQ management HTTP API.
+%% @todo Interface further functionality?
 -module(kyu_management).
 
 -export([
@@ -22,30 +25,39 @@
 
 %% API FUNCTIONS
 
+%% @doc Returns the queues declared on the provided connection.
+%% <b>This function respects the virtual_host option of the connection</b>.
 -spec get_queues(Connection :: kyu_connection:name()) -> response().
 get_queues(Connection) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
     request(get, Connection, {"/queues/~s", [Vhost]}).
 
+%% @doc Returns details about the provided queue.
+%% <b>This function respects the virtual_host option of the connection</b>.
 -spec get_queue(Connection :: kyu_connection:name(), Queue :: binary()) -> response().
 get_queue(Connection, Queue) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
     request(get, Connection, {"/queues/~s/~s", [Vhost, Queue]}).
 
+%% @doc Returns the bindings declared on the provided queue.
+%% <b>This function respects the virtual_host option of the connection</b>.
 -spec get_queue_bindings(Connection :: kyu_connection:name(), Queue :: binary()) -> response().
 get_queue_bindings(Connection, Queue) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
     request(get, Connection, {"/queues/~s/~s/bindings", [Vhost, Queue]}).
 
+%% @doc Returns the bindings in an exchange declared on the provided queue.
+%% <b>This function respects the virtual_host option of the connection</b>.
 -spec get_queue_bindings(Connection :: kyu_connection:name(), Queue :: binary(), Exchange :: binary()) -> response().
 get_queue_bindings(Connection, Queue, Exchange) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
     request(get, Connection, {"/bindings/~s/e/~s/q/~s", [Vhost, Exchange, Queue]}).
 
+%% @hidden
 -spec get_url(Connection :: kyu_connection:name()) -> string().
 get_url(Connection) ->
     Network = kyu_connection:network(Connection),
@@ -59,6 +71,7 @@ get_url(Connection) ->
     end,
     io_lib:format(Prot ++ "://" ++ Socket ++ "/api", Args).
 
+%% @hidden
 -spec get_headers(Connection :: kyu_connection:name()) -> list().
 get_headers(Connection) ->
     Network = kyu_connection:network(Connection),
@@ -67,10 +80,12 @@ get_headers(Connection) ->
     Content = base64:encode(<<Username/binary, ":", Password/binary>>),
     [{"Authorization", io_lib:format("Basic ~s", [Content])}].
 
+%% @equiv kyu_management:request(Method, Connection, Route, <<>>)
 -spec request(Method :: method(), Connection :: kyu_connection:name(), Route :: route()) -> response().
 request(Method, Connection, Route) ->
     request(Method, Connection, Route, <<>>).
 
+%% @doc Makes a request to the RabbitMQ management HTTP API.
 -spec request(
     Method :: method(),
     Connection :: kyu_connection:name(),

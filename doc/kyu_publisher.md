@@ -1,9 +1,13 @@
 
 
 # Module kyu_publisher #
+* [Description](#description)
 * [Data Types](#types)
 * [Function Index](#index)
 * [Function Details](#functions)
+
+This module is responsible for creating
+and managing amqp publishers.
 
 __Behaviours:__ [`gen_server`](gen_server.md).
 
@@ -46,7 +50,7 @@ opts() = #{name =&gt; <a href="#type-name">name()</a>, confirms =&gt; boolean()}
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td></td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td></td></tr><tr><td valign="top"><a href="#call-2">call/2</a></td><td></td></tr><tr><td valign="top"><a href="#call-3">call/3</a></td><td></td></tr><tr><td valign="top"><a href="#cast-2">cast/2</a></td><td></td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td></td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td></td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td></td></tr><tr><td valign="top"><a href="#handle_call-3">handle_call/3</a></td><td></td></tr><tr><td valign="top"><a href="#handle_cast-2">handle_cast/2</a></td><td></td></tr><tr><td valign="top"><a href="#handle_continue-2">handle_continue/2</a></td><td></td></tr><tr><td valign="top"><a href="#handle_info-2">handle_info/2</a></td><td></td></tr><tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr><tr><td valign="top"><a href="#option-3">option/3</a></td><td></td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td></td></tr><tr><td valign="top"><a href="#ref-0">ref/0</a></td><td></td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td></td></tr><tr><td valign="top"><a href="#stop-1">stop/1</a></td><td></td></tr><tr><td valign="top"><a href="#terminate-2">terminate/2</a></td><td></td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td></td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_connection.md#await-2"><tt>kyu_connection:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the publisher to successfully setup.</td></tr><tr><td valign="top"><a href="#call-2">call/2</a></td><td>Makes a gen_server:call/2 to the publisher.</td></tr><tr><td valign="top"><a href="#call-3">call/3</a></td><td>Makes a gen_server:call/3 to the publisher.</td></tr><tr><td valign="top"><a href="#cast-2">cast/2</a></td><td>Makes a gen_server:cast/2 to the publisher.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Returns the underlying amqp channel.</td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td>Returns a publisher child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the name of the consumer's connection server.</td></tr><tr><td valign="top"><a href="#option-3">option/3</a></td><td>Returns a value from the publisher's options.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Publishes a message on the channel.</td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td>Starts a publisher.</td></tr><tr><td valign="top"><a href="#stop-1">stop/1</a></td><td>Stops the publisher.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the publisher.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -62,6 +66,8 @@ await(Name::<a href="#type-name">name()</a>) -&gt; ok
 </code></pre>
 <br />
 
+Equivalent to [`kyu_connection:await(Name, 60000)`](kyu_connection.md#await-2).
+
 <a name="await-2"></a>
 
 ### await/2 ###
@@ -70,6 +76,8 @@ await(Name::<a href="#type-name">name()</a>) -&gt; ok
 await(Name::<a href="#type-name">name()</a>, Timeout::timeout()) -&gt; ok
 </code></pre>
 <br />
+
+Waits for the publisher to successfully setup.
 
 <a name="call-2"></a>
 
@@ -80,6 +88,8 @@ call(Name::<a href="#type-name">name()</a>, Request::term()) -&gt; term()
 </code></pre>
 <br />
 
+Makes a gen_server:call/2 to the publisher.
+
 <a name="call-3"></a>
 
 ### call/3 ###
@@ -88,6 +98,8 @@ call(Name::<a href="#type-name">name()</a>, Request::term()) -&gt; term()
 call(Name::<a href="#type-name">name()</a>, Request::term(), Timeout::timeout()) -&gt; term()
 </code></pre>
 <br />
+
+Makes a gen_server:call/3 to the publisher.
 
 <a name="cast-2"></a>
 
@@ -98,6 +110,8 @@ cast(Name::<a href="#type-name">name()</a>, Request::term()) -&gt; ok
 </code></pre>
 <br />
 
+Makes a gen_server:cast/2 to the publisher.
+
 <a name="channel-1"></a>
 
 ### channel/1 ###
@@ -106,6 +120,8 @@ cast(Name::<a href="#type-name">name()</a>, Request::term()) -&gt; ok
 channel(Name::<a href="#type-name">name()</a>) -&gt; pid() | undefined
 </code></pre>
 <br />
+
+Returns the underlying amqp channel.
 
 <a name="child_spec-2"></a>
 
@@ -116,6 +132,8 @@ child_spec(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name
 </code></pre>
 <br />
 
+Returns a publisher child spec.
+
 <a name="connection-1"></a>
 
 ### connection/1 ###
@@ -125,35 +143,7 @@ connection(Name::<a href="#type-name">name()</a>) -&gt; <a href="kyu_connection.
 </code></pre>
 <br />
 
-<a name="handle_call-3"></a>
-
-### handle_call/3 ###
-
-`handle_call(Publish, Caller, State) -> any()`
-
-<a name="handle_cast-2"></a>
-
-### handle_cast/2 ###
-
-`handle_cast(X1, State) -> any()`
-
-<a name="handle_continue-2"></a>
-
-### handle_continue/2 ###
-
-`handle_continue(X1, State) -> any()`
-
-<a name="handle_info-2"></a>
-
-### handle_info/2 ###
-
-`handle_info(X1, State) -> any()`
-
-<a name="init-1"></a>
-
-### init/1 ###
-
-`init(X1) -> any()`
+Returns the name of the consumer's connection server.
 
 <a name="option-3"></a>
 
@@ -164,6 +154,8 @@ option(Name::<a href="#type-name">name()</a>, Key::atom(), Value::term()) -&gt; 
 </code></pre>
 <br />
 
+Returns a value from the publisher's options.
+
 <a name="publish-2"></a>
 
 ### publish/2 ###
@@ -173,14 +165,7 @@ publish(Name::<a href="#type-name">name()</a>, Message::<a href="kyu.md#type-mes
 </code></pre>
 <br />
 
-<a name="ref-0"></a>
-
-### ref/0 ###
-
-<pre><code>
-ref() -&gt; binary()
-</code></pre>
-<br />
+Publishes a message on the channel.
 
 <a name="start_link-2"></a>
 
@@ -191,6 +176,8 @@ start_link(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name
 </code></pre>
 <br />
 
+Starts a publisher.
+
 <a name="stop-1"></a>
 
 ### stop/1 ###
@@ -200,15 +187,14 @@ stop(Name::<a href="#type-name">name()</a>) -&gt; ok
 </code></pre>
 <br />
 
-<a name="terminate-2"></a>
-
-### terminate/2 ###
-
-`terminate(X1, State) -> any()`
+Stops the publisher.
 
 <a name="where-1"></a>
 
 ### where/1 ###
 
 `where(Name) -> any()`
+
+Returns the pid of the publisher.
+-spec where(Name :: name()) -> pid() | undefined.
 

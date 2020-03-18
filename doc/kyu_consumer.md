@@ -1,9 +1,13 @@
 
 
 # Module kyu_consumer #
+* [Description](#description)
 * [Data Types](#types)
 * [Function Index](#index)
 * [Function Details](#functions)
+
+This module is responsible for creating
+and managing queue consumers.
 
 __Behaviours:__ [`supervisor`](supervisor.md).
 
@@ -36,7 +40,7 @@ opts() = #{name =&gt; <a href="#type-name">name()</a>, queue =&gt; binary(), wor
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td></td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td></td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td></td></tr><tr><td valign="top"><a href="#check_opts-1">check_opts/1</a></td><td></td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td></td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td></td></tr><tr><td valign="top"><a href="#init-1">init/1</a></td><td></td></tr><tr><td valign="top"><a href="#queue-1">queue/1</a></td><td></td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td></td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td></td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_consumer.md#await-2"><tt>kyu_consumer:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the consumer to successfully consume it's queue.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Returns the underlying amqp channel.</td></tr><tr><td valign="top"><a href="#check_opts-1">check_opts/1</a></td><td>Checks the validity of the provided consumer options.</td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td>Returns a consumer child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the name of the consumer's connection server.</td></tr><tr><td valign="top"><a href="#queue-1">queue/1</a></td><td>Returns the name of the consumer's queue.</td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td>Starts a consumer.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the consumer.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -52,6 +56,8 @@ await(Name::<a href="#type-name">name()</a>) -&gt; ok
 </code></pre>
 <br />
 
+Equivalent to [`kyu_consumer:await(Name, 60000)`](kyu_consumer.md#await-2).
+
 <a name="await-2"></a>
 
 ### await/2 ###
@@ -60,6 +66,8 @@ await(Name::<a href="#type-name">name()</a>) -&gt; ok
 await(Name::<a href="#type-name">name()</a>, Timeout::timeout()) -&gt; ok
 </code></pre>
 <br />
+
+Waits for the consumer to successfully consume it's queue.
 
 <a name="channel-1"></a>
 
@@ -70,6 +78,8 @@ channel(Name::<a href="#type-name">name()</a>) -&gt; pid() | undefined
 </code></pre>
 <br />
 
+Returns the underlying amqp channel.
+
 <a name="check_opts-1"></a>
 
 ### check_opts/1 ###
@@ -78,6 +88,10 @@ channel(Name::<a href="#type-name">name()</a>) -&gt; pid() | undefined
 check_opts(Opts::<a href="#type-opts">opts()</a>) -&gt; ok
 </code></pre>
 <br />
+
+throws `badmatch`
+
+Checks the validity of the provided consumer options.
 
 <a name="child_spec-2"></a>
 
@@ -88,6 +102,8 @@ child_spec(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name
 </code></pre>
 <br />
 
+Returns a consumer child spec.
+
 <a name="connection-1"></a>
 
 ### connection/1 ###
@@ -97,11 +113,7 @@ connection(Name::<a href="#type-name">name()</a>) -&gt; term()
 </code></pre>
 <br />
 
-<a name="init-1"></a>
-
-### init/1 ###
-
-`init(X1) -> any()`
+Returns the name of the consumer's connection server.
 
 <a name="queue-1"></a>
 
@@ -112,6 +124,8 @@ queue(Name::<a href="#type-name">name()</a>) -&gt; binary()
 </code></pre>
 <br />
 
+Returns the name of the consumer's queue.
+
 <a name="start_link-2"></a>
 
 ### start_link/2 ###
@@ -121,9 +135,14 @@ start_link(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name
 </code></pre>
 <br />
 
+Starts a consumer.
+
 <a name="where-1"></a>
 
 ### where/1 ###
 
 `where(Name) -> any()`
+
+Returns the pid of the consumer.
+-spec where(Name :: name()) -> pid() | undefined.
 

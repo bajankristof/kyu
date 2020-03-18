@@ -1,3 +1,5 @@
+%% @doc This module is responsible for creating
+%% and maintaining amqp connections and channels.
 -module(kyu_connection).
 
 -behaviour(gen_server).
@@ -69,77 +71,93 @@
 
 %% API FUNCTIONS
 
+%% @doc Returns a connection server child spec.
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
 child_spec(#{name := Name} = Opts) ->
     #{id => ?name(connection, Name), start => {?MODULE, start_link, [Opts]}}.
 
+%% @doc Starts a connection server.
 -spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
 start_link(#{name := Name} = Opts) ->
     gen_server:start_link(?via(connection, Name), ?MODULE, Opts, []).
 
+%% @doc Makes a gen_server:call/2 to the connection server.
 -spec call(Name :: name(), Request :: term()) -> term().
 call(Name, Request) ->
     gen_server:call(?via(connection, Name), Request).
 
+%% @doc Makes a gen_server:call/3 to the connection server.
 -spec call(Name :: name(), Request :: term(), Timeout :: timeout()) -> term().
 call(Name, Request, Timeout) ->
     gen_server:call(?via(connection, Name), Request, Timeout).
 
+%% @doc Makes a gen_server:cast/2 to the connection server.
 -spec cast(Name :: name(), Request :: term()) -> ok.
 cast(Name, Request) ->
     gen_server:cast(?via(connection, Name), Request).
 
+%% @doc Returns the pid of the connection server.
 %% -spec where(Name :: name()) -> pid() | undefined.
-%% @doc Returns the pid of the connection server process.
 where(Name) ->
     gproc:where(?server(connection, Name)).
 
+%% @doc Returns the underlying amqp connection.
 -spec connection(Name :: name()) -> pid() | undefined.
 connection(Name) ->
     call(Name, connection).
 
+%% @doc Opens an amqp channel.
 -spec channel(Name :: name()) -> {ok, pid()} | {error, term()}.
 channel(Name) ->
     channel(Name, []).
 
+%% @doc Opens an amqp channel and executes the provided commands.
 -spec channel(Name :: name(), Commands :: list()) -> {ok, pid()} | {error, term()}.
 channel(Name, Commands) ->
     call(Name, {channel, Commands}).
 
+%% @doc Returns the connection server's network params.
 -spec network(Name :: name()) -> #amqp_params_network{}.
 network(Name) ->
     call(Name, network).
 
+%% @doc Returns a value from the connection server's options.
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
 
+%% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
 await(Name) ->
     await(Name, ?DEFAULT_TIMEOUT).
 
+%% @doc Waits for the connection server to successfully connect.
 -spec await(Name :: name(), Timeout :: timeout()) -> ok.
 await(Name, Timeout) ->
     Server = ?server(connection, Name),
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
+%% @doc Subscribes the calling process to events from the connection server.
 -spec subscribe(Name :: name()) -> ok.
 subscribe(Name) ->
     gproc:reg({p, l, ?event(connection, Name)}).
 
+%% @doc Stops the connection server.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(connection, Name)).
 
 %% CALLBACK FUNCTIONS
 
+%% @hidden
 init(#{name := Name} = Opts) ->
     lager:md([{connection, Name}]),
     lager:debug("Kyu connection server started"),
     State = #state{name = Name, opts = Opts, network = kyu_network:from(Opts)},
     {ok, State, {continue, connect}}.
 
+%% @hidden
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call({channel, _}, _, #state{connection = undefined} = State) ->
@@ -164,9 +182,11 @@ handle_call(await, _, #state{connection = _} = State) ->
 handle_call(_, _, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_cast(_, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_continue(connect, #state{
     connection = undefined,
     name = Name,
@@ -194,6 +214,7 @@ handle_continue(connect, #state{
 handle_continue(_, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_info(connect, #state{connection = undefined} = State) ->
     {noreply, State, {continue, connect}};
 handle_info({'DOWN', Monitor, _, _, Reason}, #state{name = Name, monitor = Monitor} = State) ->
@@ -203,6 +224,7 @@ handle_info({'DOWN', Monitor, _, _, Reason}, #state{name = Name, monitor = Monit
 handle_info(_, State) ->
     {noreply, State}.
 
+%% @hidden
 terminate(_, #state{connection = undefined}) -> ok;
 terminate(_, #state{connection = Connection}) ->
     amqp_connection:close(Connection).

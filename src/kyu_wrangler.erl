@@ -1,3 +1,4 @@
+%% @hidden
 -module(kyu_wrangler).
 
 -behaviour(gen_server).

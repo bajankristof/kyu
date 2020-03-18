@@ -1,3 +1,4 @@
+%% @hidden
 -module(kyu_sup).
 
 -behaviour(supervisor).

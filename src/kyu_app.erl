@@ -1,3 +1,4 @@
+%% @hidden
 -module(kyu_app).
 
 -behaviour(application).

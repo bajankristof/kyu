@@ -1,3 +1,4 @@
+%% @hidden
 -module(kyu_waitress).
 %% for the record this module is named waitress because that sounds better then waiter
 %% no sexism intended
