@@ -163,5 +163,64 @@ handle_info(_Info, State) ->
  - `remove` - rejects and removes the message from the queue
  - `stop` - crashes the worker process
 
+## Commands
+`kyu` supports commands in publisher and consumer configurations. This allows you to declare exchanges, queues and bindings before publishing or consuming. 
+
+### AMQP commands
+The out of the box supported AMQP commands are:
+- `exchange.declare`
+- `exchange.delete`
+- `exchange.bind`
+- `exchange.unbind`
+- `queue.declare`
+- `queue.bind`
+- `queue.purge`
+- `queue.delete`
+- `queue.unbind`
+
+Use these in a module:
+```erlang
+-include_lib("kyu/include/amqp.hrl").
+```
+
+### Kyu commands
+There are two custom commands at the moment:
+
+```erlang
+%% extends the standard 'queue.bind' command
+#'kyu.queue.bind'{
+    routing_key :: binary(),
+    exchange :: binary(),
+    queue :: binary(),
+    arguments :: list(),
+
+    exclusive :: boolean()
+    %% when set to false the command is equivalent to 
+    %% a standard 'queue.bind' command
+
+    %% when set to true it will unbind any other routing key
+    %% with the same arguments (above)
+}
+```
+
+```erlang
+%% provides an alternative to the standard 'queue.unbind' command
+#'kyu.queue.unbind'{
+    pattern :: binary(), %% a regex pattern
+    %% if a routing key bound to the queue
+    %% matches the pattern and the arguments (below)
+    %% it will be unbound
+
+    exchange :: binary(),
+    queue :: binary(),
+    arguments :: list()
+}
+```
+
+Use these in a module:
+```erlang
+-include_lib("kyu/include/kyu.hrl").
+```
+
 ## Documentation
 Read the full documentation [here](https://github.com/bajankristof/kyu/blob/master/doc/README.md).
