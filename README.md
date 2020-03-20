@@ -110,9 +110,9 @@ For a full set of possible message properties, [check out the docs](https://gith
 ### Execution
 This setting will tell the publisher how to act on messages:
 
- - `sync` (default): If the publisher is in confirm mode, it will wait for the AMQP server to confirm the publication.
+ - `sync` (default): If the publisher is in confirm mode, it will make the caller wait for the AMQP server to confirm the publication. **This is only synchronous from the perspective of the caller!** Other messages can still be published at the same time.
  - `async`: The publisher will ignore confirmation or returned messages.
- - `supervised`: The publisher will wait for either the AMQP server to confirm or return the message and reply with a value based on what was sent back by the server (for example `{error, <<"NO_ROUTE">>}`. For this to work **the publisher must be in confirm mode and the mandatory flag has to be set to `true`** on the message. To be able to identify a returned message, **the publisher overrides the `message_id` property** with a custom value!
+ - `supervised`: The publisher will make the caller wait for either the AMQP server to confirm or return the message and reply with a value based on what was sent back by the server (for example `{error, <<"NO_ROUTE">>}`. For this to work **the publisher must be in confirm mode and the mandatory flag has to be set to `true`** on the message. To be able to identify a returned message, **the publisher overrides the `message_id` property** with a custom value! **This is only synchronous from the perspective of the caller!** Other messages can still be published at the same time.
 
 ## Consumers
 ```erlang

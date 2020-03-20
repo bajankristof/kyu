@@ -47,15 +47,15 @@
     confirms = true,
     commands = [] :: list(),
     channel = undefined :: pid() | undefined,
-    monitor = undefined :: reference() | undefined
+    monitor = undefined :: reference() | undefined,
+    refs = #{}
 }).
 
 -record(publish, {
     command :: #'basic.publish'{},
     props :: #'P_basic'{},
     payload :: binary(),
-    execution :: execution(),
-    timeout :: integer()
+    execution :: execution()
 }).
 
 %% API FUNCTIONS
@@ -108,7 +108,8 @@ option(Name, Key, Value) ->
 %% @doc Publishes a message on the channel.
 -spec publish(Name :: name(), Message :: kyu:message()) -> ok | {error, binary()}.
 publish(Name, Message) ->
-    call(Name, make_command(Message)).
+    Timeout = maps:get(timeout, Message, ?DEFAULT_TIMEOUT),
+    call(Name, make_command(Message), Timeout).
 
 %% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
@@ -155,7 +156,7 @@ handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
     {reply, maps:get(Key, Opts, Value), State};
 handle_call(#publish{}, _, #state{channel = undefined} = State) ->
     {reply, ?ERROR_NO_CHANNEL, State};
-handle_call(#publish{} = Command, {Caller, _}, State) ->
+handle_call(#publish{} = Command, Caller, State) ->
     handle_publish(Command, Caller, State);
 handle_call(await, Caller, #state{name = Name, channel = undefined} = State) ->
     kyu_waitress:register(?event(publisher, Name), Caller),
@@ -191,6 +192,13 @@ handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
     kyu_waitress:deliver(?event(publisher, Name), Callback),
     {noreply, State};
+handle_continue({reply, Ref, Return}, #state{refs = Refs} = State) ->
+    case Refs of
+        #{Ref := Caller} ->
+            gen_server:reply(Caller, Return),
+            {noreply, State#state{refs = maps:without([Ref], Refs)}};
+        _ -> {noreply, State}
+    end;
 handle_continue(_, State) ->
     {noreply, State}.
 
@@ -203,6 +211,12 @@ handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
     {noreply, State#state{channel = undefined, monitor = undefined}, {continue, init}};
 handle_info(?message(connection, Connection, up), #state{connection = Connection} = State) ->
     {noreply, State, {continue, init}};
+handle_info({#'basic.return'{reply_text = Reason}, #amqp_msg{props = #'P_basic'{message_id = Ref}}}, State) ->
+    {noreply, State, {continue, {reply, Ref, {error, Reason}}}};
+handle_info(#'basic.nack'{delivery_tag = Seq}, State) ->
+    {noreply, State, {continue, {reply, Seq, ?ERROR_NOT_CONFIRMED}}};
+handle_info(#'basic.ack'{delivery_tag = Seq}, State) ->
+    {noreply, State, {continue, {reply, Seq, ok}}};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -219,30 +233,18 @@ handle_publish(#publish{} = Command, _, #state{confirms = false} = State) ->
 handle_publish(#publish{execution = async} = Command, _, #state{} = State) ->
     ok = erlang:apply(amqp_channel, cast, make_args(Command, State)),
     {reply, ok, State};
-handle_publish(#publish{execution = sync} = Command, _, #state{channel = Channel} = State) ->
-    Timeout = Command#publish.timeout,
+handle_publish(#publish{execution = sync} = Command, Caller, #state{channel = Channel} = State) ->
+    Refs = State#state.refs,
+    Seq = amqp_channel:next_publish_seqno(Channel),
     ok = erlang:apply(amqp_channel, call, make_args(Command, State)),
-    case amqp_channel:wait_for_confirms(Channel, Timeout) of
-        timeout -> {reply, ?ERROR_TIMEOUT, State};
-        true -> {reply, ok, State}
-    end;
-handle_publish(#publish{execution = supervised} = Command, _, #state{channel = Channel} = State) ->
+    {noreply, State#state{refs = Refs#{Seq => Caller}}};
+handle_publish(#publish{execution = supervised} = Command, Caller, #state{channel = Channel} = State) ->
     Ref = ref(),
+    Refs = State#state.refs,
     Supervised = make_supervised(Command, Ref),
     Seq = amqp_channel:next_publish_seqno(Channel),
     ok = erlang:apply(amqp_channel, call, make_args(Supervised, State)),
-    erlang:send_after(Command#publish.timeout, self(), {timeout, Ref}),
-    receive
-        {#'basic.return'{reply_text = Reason},
-            #amqp_msg{props = #'P_basic'{message_id = Ref}}} ->
-            {reply, {error, Reason}, State};
-        #'basic.nack'{delivery_tag = Seq} ->
-            {reply, ?ERROR_NOT_CONFIRMED, State};
-        #'basic.ack'{delivery_tag = Seq} ->
-            {reply, ok, State};
-        {timeout, Ref} ->
-            ?ERROR_TIMEOUT
-    end.
+    {noreply, State#state{refs = Refs#{Ref => Caller, Seq => Caller}}}.
 
 make_args(#publish{command = Command, props = Props, payload = Payload}, #state{channel = Channel}) ->
     [Channel, Command, #amqp_msg{props = Props, payload = Payload}].
@@ -259,8 +261,7 @@ make_command(Message) ->
         },
         props = make_props(Message),
         payload = maps:get(payload, Message, <<>>),
-        execution = maps:get(execution, Message, sync),
-        timeout = maps:get(timeout, Message, ?DEFAULT_TIMEOUT)
+        execution = maps:get(execution, Message, sync)
     }.
 
 make_props(Message) ->
