@@ -1,0 +1,5 @@
+-define(ERROR_NO_CONNECTION, {error, <<"NO_CONNECTION">>}).
+-define(ERROR_NO_CHANNEL, {error, <<"NO_CHANNEL">>}).
+-define(ERROR_NOT_CONFIRMED, {error, <<"NOT_CONFIRMED">>}).
+-define(ERROR_TIMEOUT, {error, <<"TIMEOUT">>}).
+-define(ERROR_CANCELED, {error, <<"CANCELED">>}).
