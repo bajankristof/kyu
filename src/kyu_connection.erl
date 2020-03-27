@@ -162,14 +162,8 @@ handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call({channel, _}, _, #state{connection = undefined} = State) ->
     {reply, ?ERROR_NO_CONNECTION, State};
-handle_call({channel, Commands}, _, #state{name = Name, connection = Connection} = State) ->
-    case amqp_connection:open_channel(Connection) of
-        {ok, Channel} ->
-            kyu:declare(Name, Channel, Commands),
-            {reply, {ok, Channel}, State};
-        {error, Reason} ->
-            {reply, {error, Reason}, State}
-    end;
+handle_call({channel, Commands}, Caller, #state{connection = _} = State) ->
+    {noreply, State, {continue, {channel, Commands, Caller}}};
 handle_call(network, _, #state{network = Network} = State) ->
     {reply, Network, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
@@ -210,6 +204,19 @@ handle_continue(connect, #state{
             Meta = [{reason, Reason}, {attempts, Attempts}],
             lager:warning(Meta, "Kyu connection server connection failed"),
             handle_failure(State#state{attempts = Attempts + 1})
+    end;
+handle_continue({channel, Commands, Caller}, #state{
+    name = Name,
+    connection = Connection
+} = State) ->
+    case amqp_connection:open_channel(Connection) of
+        {ok, Channel} ->
+            kyu:declare(Name, Channel, Commands),
+            gen_server:reply(Caller, {ok, Channel}),
+            {noreply, State};
+        {error, Reason} ->
+            gen_server:reply(Caller, {error, Reason}),
+            {noreply, State}
     end;
 handle_continue(_, State) ->
     {noreply, State}.
