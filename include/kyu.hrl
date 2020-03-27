@@ -7,7 +7,8 @@
 }).
 
 -record('kyu.queue.unbind', {
-    pattern :: binary(),
+    except = <<>> :: binary(),
+    pattern = <<>> :: binary(),
     exchange :: binary(),
     queue :: binary(),
     arguments = [] :: list()

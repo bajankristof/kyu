@@ -206,10 +206,12 @@ There are two custom commands at the moment:
 ```erlang
 %% provides an alternative to the standard 'queue.unbind' command
 #'kyu.queue.unbind'{
-    pattern :: binary(), %% a regex pattern
+    except = <<>> :: binary(), %% an exception routing key
+    pattern = <<>> :: binary(), %% a regex pattern
     %% if a routing key bound to the queue
     %% matches the pattern and the arguments (below)
     %% it will be unbound
+    %% (except and pattern may not be used together)
 
     exchange :: binary(),
     queue :: binary(),

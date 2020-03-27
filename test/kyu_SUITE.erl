@@ -237,7 +237,7 @@ can_recover_badmatch(Config) ->
     Self = self(),
     Name = ?config(name, Config),
     ok = start_features(Config, fun
-        (Message, State) -> Self ! Message, badmatch
+        (Message, _) -> Self ! Message, badmatch
     end),
     ok = kyu_publisher:publish(Name, #{
         routing_key => ?CTRK,

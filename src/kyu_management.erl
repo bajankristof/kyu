@@ -129,7 +129,7 @@ declare(Connection, Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
 declare(Connection, Channel, #'kyu.queue.bind'{exclusive = true} = Command) ->
     Key = Command#'kyu.queue.bind'.routing_key,
     declare(Connection, Channel, #'kyu.queue.unbind'{
-        pattern = <<"^(?!", Key/binary, "$).*$">>,
+        except = Key,
         exchange = Command#'kyu.queue.bind'.exchange,
         queue = Command#'kyu.queue.bind'.queue,
         arguments = Command#'kyu.queue.bind'.arguments
@@ -141,11 +141,11 @@ declare(Connection, Channel, #'kyu.queue.unbind'{} = Command) ->
         Command#'kyu.queue.unbind'.queue,
         Command#'kyu.queue.unbind'.exchange
     ),
-    lists:map(fun (#{<<"routing_key">> := Key}) ->
-        case match(Key, Command#'kyu.queue.unbind'.pattern) of
+    lists:map(fun (Binding) ->
+        case match(Binding, Command) of
             match ->
                 kyu:declare(Connection, Channel, #'queue.unbind'{
-                    routing_key = Key,
+                    routing_key = maps:get(<<"routing_key">>, Binding),
                     exchange = Command#'kyu.queue.unbind'.exchange,
                     queue = Command#'kyu.queue.unbind'.queue,
                     arguments = Command#'kyu.queue.unbind'.arguments
@@ -156,5 +156,12 @@ declare(Connection, Channel, #'kyu.queue.unbind'{} = Command) ->
 
 %% PRIVATE FUNCTIONS
 
-match(Subject, Pattern) ->
-    re:run(Subject, Pattern, [global, {capture, none}]).
+match(_, #'kyu.queue.unbind'{except = <<>>, pattern = <<>>}) -> nomatch;
+match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{except = <<>>} = Command) ->
+    Regex = Command#'kyu.queue.unbind'.pattern,
+    re:run(Key, Regex, [global, {capture, none}]);
+match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{} = Command) ->
+    case Key =:= Command#'kyu.queue.unbind'.except of
+        false -> match;
+        _ -> nomatch
+    end.
