@@ -17,6 +17,7 @@
     send/2,
     send_each/2,
     get_all/1,
+    message/2,
     transaction/2
 ]).
 
@@ -134,6 +135,12 @@ get_all(Name) ->
     end, [], Children).
 
 %% @hidden
+-spec message(Name :: kyu_consumer:name(), Command :: tuple()) -> ok.
+message(Name, Command) ->
+    Worker = poolboy:checkout(?via(worker, Name)),
+    gen_server:cast(Worker, Command).
+
+%% @hidden
 -spec transaction(Name :: kyu_consumer:name(), Callback :: fun((pid()) -> term())) -> term().
 transaction(Name, Callback) ->
     poolboy:transaction(?via(worker, Name), Callback).
@@ -176,13 +183,12 @@ handle_continue({message, Tag, Key, Content}, #state{module = Module, args = Arg
     end;
 handle_continue({reply, Tag, {Type, Args}}, #state{name = Name, unacked = Unacked} = State) ->
     ok = kyu_wrangler:cast(Name, {Type, Tag}),
+    poolboy:checkin(?via(worker, Name), self()),
     {noreply, State#state{args = Args, unacked = lists:delete(Tag, Unacked)}};
-handle_continue({reply, _, {_, Reason, Args}}, #state{} = State) ->
-    {stop, Reason, State#state{args = Args}};
 handle_continue({noreply, {_, Args}}, #state{} = State) ->
     {noreply, State#state{args = Args}};
-handle_continue({noreply, {_, Reason, Args}}, #state{} = State) -> 
-    {stop, Reason, State#state{args = Args}};
+handle_continue({_, _, {stop, Stop, Args}}, #state{} = State) ->
+    {stop, Stop, State#state{args = Args}};
 handle_continue(_, State) ->
     {noreply, State}.
 

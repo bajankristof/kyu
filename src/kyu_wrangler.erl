@@ -38,7 +38,8 @@
     commands :: list(),
     queue :: binary(),
     channel = undefined :: undefined | pid(),
-    monitor = undefined :: undefined | reference()
+    monitor = undefined :: undefined | reference(),
+    tag = undefined
 }).
 
 %% API FUNCTIONS
@@ -150,8 +151,9 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 handle_continue(init, #state{channel = undefined, connection = Connection, commands = Commands} = State) ->
-    case catch kyu_connection:channel(Connection, Commands) of
+    case catch kyu_connection:channel(Connection) of
         {ok, Channel} ->
+            kyu:declare(Connection, Channel, Commands),
             Monitor = erlang:monitor(process, Channel),
             Next = State#state{channel = Channel, monitor = Monitor},
             {noreply, Next, {continue, {init, prefetch}}};
@@ -167,8 +169,8 @@ handle_continue({init, prefetch}, #state{channel = Channel, opts = Opts} = State
     {noreply, State, {continue, {init, consume}}};
 handle_continue({init, consume}, #state{channel = Channel, queue = Queue} = State) ->
     Command = #'basic.consume'{queue = Queue},
-    #'basic.consume_ok'{} = amqp_channel:call(Channel, Command),
-    {noreply, State, {init, fin}};
+    #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:call(Channel, Command),
+    {noreply, State#state{tag = Tag}, {init, fin}};
 handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
     kyu_waitress:deliver(?event(wrangler, Name), Callback),
@@ -176,14 +178,10 @@ handle_continue({init, fin}, #state{name = Name} = State) ->
 handle_continue(_, State) ->
     {noreply, State}.
 
-handle_info(#'basic.consume_ok'{}, State) ->
-    {noreply, State};
-handle_info(#'basic.cancel_ok'{}, State) ->
-    {stop, ?ERROR_CANCELED, State};
 handle_info({#'basic.deliver'{} = Command, Content}, State) ->
     Worker = maps:get(name, State#state.opts),
     #'basic.deliver'{delivery_tag = Tag, routing_key = Key} = Command,
-    ok = kyu_worker:cast(Worker, {message, Tag, Key, Content}),
+    ok = kyu_worker:message(Worker, {message, Tag, Key, Content}),
     {noreply, State};
 handle_info({'DOWN', Monitor, _, _, normal}, #state{monitor = Monitor} = State) ->
     {noreply, State#state{channel = undefined, monitor = undefined}};
@@ -197,5 +195,8 @@ handle_info(_, State) ->
     {noreply, State}.
 
 terminate(_, #state{channel = undefined}) -> ok;
-terminate(_, #state{channel = Channel}) ->
+terminate(_, #state{channel = Channel, tag = undefined}) ->
+    amqp_channel:close(Channel);
+terminate(_, #state{channel = Channel, tag = Tag}) ->
+    amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
     amqp_channel:close(Channel).

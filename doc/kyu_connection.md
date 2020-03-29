@@ -40,7 +40,7 @@ opts() = #{name =&gt; <a href="#type-name">name()</a>, url =&gt; iodata(), host 
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_connection.md#await-2"><tt>kyu_connection:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the connection server to successfully connect.</td></tr><tr><td valign="top"><a href="#call-2">call/2</a></td><td>Makes a gen_server:call/2 to the connection server.</td></tr><tr><td valign="top"><a href="#call-3">call/3</a></td><td>Makes a gen_server:call/3 to the connection server.</td></tr><tr><td valign="top"><a href="#cast-2">cast/2</a></td><td>Makes a gen_server:cast/2 to the connection server.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Opens an amqp channel.</td></tr><tr><td valign="top"><a href="#channel-2">channel/2</a></td><td>Opens an amqp channel and executes the provided commands.</td></tr><tr><td valign="top"><a href="#child_spec-1">child_spec/1</a></td><td>Returns a connection server child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the underlying amqp connection.</td></tr><tr><td valign="top"><a href="#network-1">network/1</a></td><td>Returns the connection server's network params.</td></tr><tr><td valign="top"><a href="#option-3">option/3</a></td><td>Returns a value from the connection server's options.</td></tr><tr><td valign="top"><a href="#start_link-1">start_link/1</a></td><td>Starts a connection server.</td></tr><tr><td valign="top"><a href="#stop-1">stop/1</a></td><td>Stops the connection server.</td></tr><tr><td valign="top"><a href="#subscribe-1">subscribe/1</a></td><td>Subscribes the calling process to events from the connection server.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the connection server.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_connection.md#await-2"><tt>kyu_connection:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the connection server to successfully connect.</td></tr><tr><td valign="top"><a href="#call-2">call/2</a></td><td>Makes a gen_server:call/2 to the connection server.</td></tr><tr><td valign="top"><a href="#call-3">call/3</a></td><td>Makes a gen_server:call/3 to the connection server.</td></tr><tr><td valign="top"><a href="#cast-2">cast/2</a></td><td>Makes a gen_server:cast/2 to the connection server.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Opens an amqp channel.</td></tr><tr><td valign="top"><a href="#child_spec-1">child_spec/1</a></td><td>Returns a connection server child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the underlying amqp connection.</td></tr><tr><td valign="top"><a href="#network-1">network/1</a></td><td>Returns the connection server's network params.</td></tr><tr><td valign="top"><a href="#option-3">option/3</a></td><td>Returns a value from the connection server's options.</td></tr><tr><td valign="top"><a href="#start_link-1">start_link/1</a></td><td>Starts a connection server.</td></tr><tr><td valign="top"><a href="#stop-1">stop/1</a></td><td>Stops the connection server.</td></tr><tr><td valign="top"><a href="#subscribe-1">subscribe/1</a></td><td>Subscribes the calling process to events from the connection server.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the connection server.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -112,17 +112,6 @@ channel(Name::<a href="#type-name">name()</a>) -&gt; {ok, pid()} | {error, term(
 <br />
 
 Opens an amqp channel.
-
-<a name="channel-2"></a>
-
-### channel/2 ###
-
-<pre><code>
-channel(Name::<a href="#type-name">name()</a>, Commands::list()) -&gt; {ok, pid()} | {error, term()}
-</code></pre>
-<br />
-
-Opens an amqp channel and executes the provided commands.
 
 <a name="child_spec-1"></a>
 

@@ -14,8 +14,7 @@
 -export([
     can_declare_exchange/1,
     can_declare_queue/1,
-    can_bind_queue/1,
-    can_delete_exchange/1
+    can_bind_queue/1
 ]).
 
 %% LIFECYCLE
@@ -58,8 +57,7 @@ groups() -> [
     {commands, [], [
         can_declare_exchange,
         can_declare_queue,
-        can_bind_queue,
-        can_delete_exchange
+        can_bind_queue
     ]},
     {lifecycle, [], [
         can_connection_survive,
@@ -84,12 +82,21 @@ end_per_group(_, _) ->
     application:stop(kyu).
 
 init_per_testcase(Case, Config) ->
+    dbg:tracer(),
+    % dbg:p(all, c),
+    % dbg:tpl(kyu_worker, init, '_', cx),
+    % dbg:tpl(kyu_worker, cast, '_', cx),
+    % dbg:tpl(kyu_worker, handle_cast, '_', cx),
+    % dbg:tpl(kyu_worker, handle_continue, '_', cx),
+    % dbg:tpl(kyu_wrangler, handle_info, '_', cx),
+    % dbg:tpl(poolboy, checkout, '_', cx),
     Binary = erlang:atom_to_binary(Case, utf8),
     Connection = ?config(connection, Config),
     {ok, Channel} = kyu_connection:channel(Connection),
     [{name, Binary}, {channel, Channel}, {queue, Binary}] ++ Config.
 
 end_per_testcase(_, Config) ->
+    dbg:stop_clear(),
     Channel = ?config(channel, Config),
     case erlang:process_info(Channel) of
         undefined -> ok;
@@ -99,8 +106,8 @@ end_per_testcase(_, Config) ->
 can_declare_exchange(Config) ->
     Connection = ?config(connection, Config),
     Channel = ?config(channel, Config),
-    Command =  #'exchange.declare'{exchange = ?CTEXG, type = ?CTEXGT},
-    kyu:declare(Connection, Channel, Command).
+    kyu:declare(Connection, Channel, #'exchange.declare'{exchange = ?CTEXG, type = ?CTEXGT}),
+    kyu:declare(Connection, Channel, #'exchange.delete'{exchange = ?CTEXG}).
 
 can_declare_queue(Config) ->
     Connection = ?config(connection, Config),
@@ -119,32 +126,26 @@ can_bind_queue(Config) ->
         #'queue.bind'{
             routing_key = <<"kyu.binding.normal">>,
             queue = Queue,
-            exchange = ?CTEXG
+            exchange = <<"amq.topic">>
         }
     ]),
     kyu:declare(Connection, Channel, #'kyu.queue.bind'{
         routing_key = <<"kyu.binding.survivor">>,
         queue = Queue,
-        exchange = ?CTEXG,
+        exchange = <<"amq.topic">>,
         exclusive = true
     }),
     ?assertMatch(
         {ok, [#{<<"routing_key">> := <<"kyu.binding.survivor">>}]},
-        kyu_management:get_queue_bindings(Connection, Queue, ?CTEXG)
+        kyu_management:get_queue_bindings(Connection, Queue, <<"amq.topic">>)
     ),
     kyu:declare(Connection, Channel, #'kyu.queue.unbind'{
         pattern = <<"^.*$">>,
         queue = Queue,
-        exchange = ?CTEXG
+        exchange = <<"amq.topic">>
     }),
-    {ok, []} = kyu_management:get_queue_bindings(Connection, Queue, ?CTEXG),
+    {ok, []} = kyu_management:get_queue_bindings(Connection, Queue, <<"amq.topic">>),
     kyu:declare(Connection, Channel, #'queue.delete'{queue = Queue}).
-
-can_delete_exchange(Config) ->
-    Connection = ?config(connection, Config),
-    Channel = ?config(channel, Config),
-    Command = #'exchange.delete'{exchange = ?CTEXG},
-    kyu:declare(Connection, Channel, Command).
 
 can_connection_survive(Config) ->
     Connection = ?config(connection, Config),
@@ -254,10 +255,19 @@ can_recover_badmatch(Config) ->
 start_features(Config, Callback) ->
     ok = meck:new(?CTWM, [non_strict]),
     ok = meck:expect(?CTWM, handle_message, Callback),
+    % dbg:tpl(?CTWM, handle_message, '_', cx),
     Name = ?config(name, Config),
     Connection = ?config(connection, Config),
     Queue = ?config(queue, Config),
-    {ok, _} = kyu_publisher:start_link(Connection, #{name => Name}),
+    {ok, _} = kyu_publisher:start_link(Connection, #{
+        name => Name,
+        commands => [
+            #'exchange.declare'{
+                exchange = ?CTEXG,
+                type = ?CTEXGT
+            }
+        ]
+    }),
     {ok, _} = kyu_consumer:start_link(Connection, #{
         name => Name,
         queue => Queue,
@@ -280,7 +290,6 @@ start_features(Config, Callback) ->
     kyu_consumer:await(Name).
 
 stop_features(Config) ->
-    ok = meck:unload(?CTWM),
     Name = ?config(name, Config),
     Connection = ?config(connection, Config),
     Channel = kyu_consumer:channel(Name),
@@ -290,4 +299,5 @@ stop_features(Config) ->
         #'queue.delete'{queue = Queue}
     ]),
     erlang:exit(kyu_consumer:where(Name), normal),
-    kyu_publisher:stop(Name).
+    kyu_publisher:stop(Name),
+    meck:unload(?CTWM).

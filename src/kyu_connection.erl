@@ -13,7 +13,6 @@
     where/1,
     connection/1,
     channel/1,
-    channel/2,
     network/1,
     option/3,
     await/1,
@@ -109,12 +108,7 @@ connection(Name) ->
 %% @doc Opens an amqp channel.
 -spec channel(Name :: name()) -> {ok, pid()} | {error, term()}.
 channel(Name) ->
-    channel(Name, []).
-
-%% @doc Opens an amqp channel and executes the provided commands.
--spec channel(Name :: name(), Commands :: list()) -> {ok, pid()} | {error, term()}.
-channel(Name, Commands) ->
-    call(Name, {channel, Commands}).
+    call(Name, channel).
 
 %% @doc Returns the connection server's network params.
 -spec network(Name :: name()) -> #amqp_params_network{}.
@@ -154,16 +148,19 @@ stop(Name) ->
 init(#{name := Name} = Opts) ->
     lager:md([{connection, Name}]),
     lager:debug("Kyu connection server started"),
-    State = #state{name = Name, opts = Opts, network = kyu_network:from(Opts)},
-    {ok, State, {continue, connect}}.
+    {ok, #state{
+        name = Name,
+        opts = Opts,
+        network = kyu_network:from(Opts)
+    }, {continue, connect}}.
 
 %% @hidden
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
-handle_call({channel, _}, _, #state{connection = undefined} = State) ->
+handle_call(channel, _, #state{connection = undefined} = State) ->
     {reply, ?ERROR_NO_CONNECTION, State};
-handle_call({channel, Commands}, Caller, #state{connection = _} = State) ->
-    {noreply, State, {continue, {channel, Commands, Caller}}};
+handle_call(channel, _, #state{connection = Connection} = State) ->
+    {reply, amqp_connection:open_channel(Connection), State};
 handle_call(network, _, #state{network = Network} = State) ->
     {reply, Network, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
@@ -204,19 +201,6 @@ handle_continue(connect, #state{
             Meta = [{reason, Reason}, {attempts, Attempts}],
             lager:warning(Meta, "Kyu connection server connection failed"),
             handle_failure(State#state{attempts = Attempts + 1})
-    end;
-handle_continue({channel, Commands, Caller}, #state{
-    name = Name,
-    connection = Connection
-} = State) ->
-    case amqp_connection:open_channel(Connection) of
-        {ok, Channel} ->
-            kyu:declare(Name, Channel, Commands),
-            gen_server:reply(Caller, {ok, Channel}),
-            {noreply, State};
-        {error, Reason} ->
-            gen_server:reply(Caller, {error, Reason}),
-            {noreply, State}
     end;
 handle_continue(_, State) ->
     {noreply, State}.

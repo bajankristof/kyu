@@ -172,8 +172,9 @@ handle_cast(_, State) ->
 
 %% @hidden
 handle_continue(init, #state{channel = undefined, connection = Connection, commands = Commands} = State) ->
-    case catch kyu_connection:channel(Connection, Commands) of
+    case catch kyu_connection:channel(Connection) of
         {ok, Channel} ->
+            kyu:declare(Connection, Channel, Commands),
             amqp_channel:register_return_handler(Channel, self()),
             Monitor = erlang:monitor(process, Channel),
             Next = State#state{channel = Channel, monitor = Monitor},
