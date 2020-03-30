@@ -118,6 +118,7 @@ request(Method, Connection, Route, Body) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @hidden
 -spec declare(Connection :: kyu_connection:name(), Channel :: pid(), Command :: tuple()) -> ok.
 declare(Connection, Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
     kyu:declare(Connection, Channel, #'queue.bind'{

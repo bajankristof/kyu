@@ -48,21 +48,12 @@ route() = string() | {string(), list()}
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-3">declare/3</a></td><td></td></tr><tr><td valign="top"><a href="#get_queue-2">get_queue/2</a></td><td>Returns details about the provided queue.</td></tr><tr><td valign="top"><a href="#get_queue_bindings-2">get_queue_bindings/2</a></td><td>Returns the bindings declared on the provided queue.</td></tr><tr><td valign="top"><a href="#get_queue_bindings-3">get_queue_bindings/3</a></td><td>Returns the bindings in an exchange declared on the provided queue.</td></tr><tr><td valign="top"><a href="#get_queues-1">get_queues/1</a></td><td>Returns the queues declared on the provided connection.</td></tr><tr><td valign="top"><a href="#request-3">request/3</a></td><td>Equivalent to <a href="kyu_management.md#request-4"><tt>kyu_management:request(Method, Connection, Route, &lt;&lt;&gt;&gt;)</tt></a>.</td></tr><tr><td valign="top"><a href="#request-4">request/4</a></td><td>Makes a request to the RabbitMQ management HTTP API.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#get_queue-2">get_queue/2</a></td><td>Returns details about the provided queue.</td></tr><tr><td valign="top"><a href="#get_queue_bindings-2">get_queue_bindings/2</a></td><td>Returns the bindings declared on the provided queue.</td></tr><tr><td valign="top"><a href="#get_queue_bindings-3">get_queue_bindings/3</a></td><td>Returns the bindings in an exchange declared on the provided queue.</td></tr><tr><td valign="top"><a href="#get_queues-1">get_queues/1</a></td><td>Returns the queues declared on the provided connection.</td></tr><tr><td valign="top"><a href="#request-3">request/3</a></td><td>Equivalent to <a href="kyu_management.md#request-4"><tt>kyu_management:request(Method, Connection, Route, &lt;&lt;&gt;&gt;)</tt></a>.</td></tr><tr><td valign="top"><a href="#request-4">request/4</a></td><td>Makes a request to the RabbitMQ management HTTP API.</td></tr></table>
 
 
 <a name="functions"></a>
 
 ## Function Details ##
-
-<a name="declare-3"></a>
-
-### declare/3 ###
-
-<pre><code>
-declare(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Channel::pid(), Command::tuple()) -&gt; ok
-</code></pre>
-<br />
 
 <a name="get_queue-2"></a>
 

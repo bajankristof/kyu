@@ -112,7 +112,7 @@ publish(Name, Message) ->
     Timeout = maps:get(timeout, Message, ?DEFAULT_TIMEOUT),
     call(Name, make_command(Message), Timeout).
 
-%% @equiv kyu_connection:await(Name, 60000)
+%% @equiv kyu_publisher:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
 await(Name) ->
     await(Name, ?DEFAULT_TIMEOUT).
