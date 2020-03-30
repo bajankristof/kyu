@@ -22,6 +22,7 @@
 
 -type name() :: term().
 -type opts() :: #{
+    id := supervisor:child_spec(),
     name := name(),
     queue := binary(),
     worker_module := atom(),
@@ -36,8 +37,10 @@
 
 %% @doc Returns a consumer child spec.
 -spec child_spec(Connection :: kyu_connection:name(), Opts :: opts()) -> supervisor:child_spec().
+child_spec(Connection, #{id := _} = Opts) ->
+    #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Connection, Opts]}};
 child_spec(Connection, #{name := Name} = Opts) ->
-    #{id => ?name(consumer, Name), start => {?MODULE, start_link, [Connection, Opts]}}.
+    child_spec(Connection, Opts#{id => ?name(consumer, Name)}).
 
 %% @doc Starts a consumer.
 -spec start_link(Connection :: kyu_connection:name(), Opts :: opts()) -> {ok, pid()} | {error, term()}.

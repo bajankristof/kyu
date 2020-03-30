@@ -37,6 +37,7 @@
 
 -type name() :: term().
 -type opts() :: #{
+    id := supervisor:child_id(),
     name := name(),
     url := iodata(),
     host := iolist(),
@@ -72,8 +73,10 @@
 
 %% @doc Returns a connection server child spec.
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
+child_spec(#{id := _} = Opts) ->
+    #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Opts]}};
 child_spec(#{name := Name} = Opts) ->
-    #{id => ?name(connection, Name), start => {?MODULE, start_link, [Opts]}}.
+    child_spec(Opts#{id => ?name(connection, Name)}).
 
 %% @doc Starts a connection server.
 -spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.

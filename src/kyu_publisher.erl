@@ -36,7 +36,7 @@
 -include("./_errors.hrl").
 
 -type name() :: term().
--type opts() :: #{name := name(), confirms := boolean()}.
+-type opts() :: #{id := supervisor:child_id(), name := name(), confirms := boolean()}.
 -type execution() :: sync | async | supervised.
 -export_type([name/0, opts/0, execution/0]).
 
@@ -62,8 +62,10 @@
 
 %% @doc Returns a publisher child spec.
 -spec child_spec(Connection :: kyu_connection:name(), Opts :: map()) -> supervisor:child_spec().
+child_spec(Connection, #{id := _} = Opts) ->
+    #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Connection, Opts]}};
 child_spec(Connection, #{name := Name} = Opts) ->
-    #{id => ?name(publisher, Name), start => {?MODULE, start_link, [Connection, Opts]}}.
+    child_spec(Connection, Opts#{id => ?name(publisher, Name)}).
 
 %% @doc Starts a publisher.
 -spec start_link(Connection :: kyu_connection:name(), Opts :: map()) -> {ok, pid()} | {error, term()}.
