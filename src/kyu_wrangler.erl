@@ -100,7 +100,7 @@ await(Name, Timeout) ->
 
 init({Connection, #{name := Name, queue := Queue} = Opts}) ->
     lager:md([{wrangler, Name}]),
-    lager:debug("Kyu wrangler process started"),
+    % lager:debug("Kyu wrangler process started"),
     kyu_connection:subscribe(Connection),
     Commands = maps:get(commands, Opts, []),
     {ok, #state{

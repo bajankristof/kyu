@@ -144,6 +144,12 @@ After introducing the consumer to your supervision tree, it will start to consum
 
 -behaviour(kyu_worker).
 
+-exports([init/1, handle_message/2, handle_info/2]).
+
+%% this callback is optional and works much like gen_server:init/1
+-spec init(State :: term()) ->
+    {ok, State}.
+
 -spec handle_message(Message :: kyu:message(), State :: term()) ->
     {ack, NewState :: term()}
     | {reject, NewState :: term()}

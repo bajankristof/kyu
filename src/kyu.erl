@@ -14,20 +14,23 @@
     routing_key := binary(),
     exchange := binary(),
     payload := binary(),
-    timeout := integer(),
     mandatory := boolean(),
+    type := binary(),
     headers := list(),
     priority := integer(),
     expiration := integer(),
+    timestamp := integer(),
     content_type := binary(),
     content_encoding := binary(),
     delivery_mode := integer(),
     correlation_id := binary(),
+    cluster_id := binary(),
     message_id := binary(),
     user_id := binary(),
     app_id := binary(),
     reply_to := binary(),
-    execution := kyu_publisher:execution()
+    execution := kyu_publisher:execution(),
+    timeout := infinity | integer()
 }.
 -export_type([message/0]).
 

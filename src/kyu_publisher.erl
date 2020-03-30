@@ -108,6 +108,7 @@ option(Name, Key, Value) ->
 %% @doc Publishes a message on the channel.
 -spec publish(Name :: name(), Message :: kyu:message()) -> ok | {error, binary()}.
 publish(Name, Message) ->
+    true = kyu_message:validate(Message),
     Timeout = maps:get(timeout, Message, ?DEFAULT_TIMEOUT),
     call(Name, make_command(Message), Timeout).
 
@@ -137,7 +138,7 @@ ref() -> base64:encode(erlang:term_to_binary(erlang:make_ref())).
 %% @hidden
 init({Connection, #{name := Name} = Opts}) ->
     lager:md([{publisher, Name}]),
-    lager:debug("Kyu publisher process started"),
+    % lager:debug("Kyu publisher process started"),
     kyu_connection:subscribe(Connection),
     Commands = maps:get(commands, Opts, []),
     {ok, #state{
@@ -251,35 +252,16 @@ make_args(#publish{command = Command, props = Props, payload = Payload}, #state{
     [Channel, Command, #amqp_msg{props = Props, payload = Payload}].
 
 make_supervised(#publish{props = Props} = Command, Key) ->
-    Command#publish{props = update_props(Props, #{message_id => Key})}.
+    Command#publish{props = Props#'P_basic'{message_id = Key}}.
 
 make_command(Message) ->
     #publish{
         command = #'basic.publish'{
-            mandatory = maps:get(mandatory, Message, false),
+            routing_key = maps:get(routing_key, Message, <<>>),
             exchange = maps:get(exchange, Message, <<>>),
-            routing_key = maps:get(routing_key, Message, <<>>)
+            mandatory = maps:get(mandatory, Message, false)
         },
-        props = make_props(Message),
+        props = kyu_message:props(Message),
         payload = maps:get(payload, Message, <<>>),
         execution = maps:get(execution, Message, sync)
     }.
-
-make_props(Message) ->
-    update_props(#'P_basic'{}, Message).
-
-update_props(#'P_basic'{} = Props, Message) ->
-    maps:fold(fun
-        (headers, Value, Acc) -> Acc#'P_basic'{headers = Value};
-        (priority, Value, Acc) -> Acc#'P_basic'{priority = Value};
-        (expiration, Value, Acc) -> Acc#'P_basic'{expiration = Value};
-        (content_type, Value, Acc) -> Acc#'P_basic'{content_type = Value};
-        (content_encoding, Value, Acc) -> Acc#'P_basic'{content_encoding = Value};
-        (delivery_mode, Value, Acc) -> Acc#'P_basic'{delivery_mode = Value};
-        (correlation_id, Id, Acc) -> Acc#'P_basic'{correlation_id = Id};
-        (message_id, Id, Acc) -> Acc#'P_basic'{message_id = Id};
-        (user_id, Id, Acc) -> Acc#'P_basic'{user_id = Id};
-        (app_id, Id, Acc) -> Acc#'P_basic'{app_id = Id};
-        (reply_to, Value, Acc) -> Acc#'P_basic'{reply_to = Value};
-        (_, _, Acc) -> Acc
-    end, Props, Message).

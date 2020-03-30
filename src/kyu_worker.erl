@@ -43,11 +43,13 @@
     unacked = []
 }).
 
+-callback init(State :: term()) ->
+    {ok, term()} | {stop, term()}.
 -callback handle_message(Message :: kyu:message(), State :: term()) ->
     {ack, term()} | {reject, term()} | {remove, term()} | {stop, term(), term()}.
 -callback handle_info(Info :: term(), State :: term()) ->
     {noreply, term()} | {stop, term(), term()}.
--optional_callbacks([handle_info/2]).
+-optional_callbacks([init/1, handle_info/2]).
 
 %% @hidden
 -spec child_spec(
@@ -153,14 +155,15 @@ start_link({Connection, Opts}) ->
 
 %% @hidden
 init({Connection, #{name := Name} = Opts}) ->
-    lager:debug([{worker, Name}], "Kyu worker process started"),
-    {ok, #state{
-        connection = Connection,
-        name = Name,
-        opts = Opts,
-        module = maps:get(worker_module, Opts),
-        args = maps:get(worker_state, Opts)
-    }}.
+    % lager:debug([{worker, Name}], "Kyu worker process started"),
+    State = #state{connection = Connection, name = Name,
+        opts = Opts, module = maps:get(worker_module, Opts),
+        args = maps:get(worker_state, Opts)},
+    case call_optional(State#state.module, {init, 1}, [State#state.args]) of
+        {ok, Args} -> {ok, State#state{args = Args}};
+        {stop, Stop} -> {stop, Stop};
+        undefined -> {ok, State}
+    end.
 
 %% @hidden
 handle_call(_, _, State) ->
@@ -174,7 +177,7 @@ handle_cast(_, State) ->
 
 %% @hidden
 handle_continue({message, Tag, Key, Content}, #state{module = Module, args = Args} = State) ->
-    Message = maps:put(routing_key, Key, make_message(Content)),
+    Message = maps:put(routing_key, Key, kyu_message:parse(Content)),
     case erlang:apply(Module, handle_message, [Message, Args]) of
         {ack, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
         {reject, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
@@ -194,14 +197,10 @@ handle_continue(_, State) ->
 
 %% @hidden
 handle_info(Info, #state{module = Module, args = Args} = State) ->
-    Functions = erlang:apply(Module, module_info, [exports]),
-    case lists:member({handle_info, 2}, Functions) of
-        false -> {noreply, State};
-        true ->
-            case erlang:apply(Module, handle_info, [Info, Args]) of
-                {noreply, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
-                {stop, _, _} = Return -> {noreply, State, {continue, {noreply, Return}}}
-            end
+    case call_optional(Module, {handle_info, 2}, [Info, Args]) of
+        {noreply, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
+        {stop, _, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
+        undefined -> {noreply, State}
     end.
 
 %% @hidden
@@ -210,35 +209,18 @@ terminate(_, #state{name = Name, unacked = Unacked}) ->
         kyu_wrangler:cast(Name, {reject, Tag})
     end, ok, Unacked).
 
-
 %% PRIVATE FUNCTIONS
 
-make_message(#amqp_msg{payload = Payload, props = Props}) ->
-    Keys = [headers, priority, expiration, content_type,
-        content_encoding, delivery_mode, correlation_id,
-        message_id, user_id, app_id, reply_to],
-    Values = lists:map(fun
-        (headers) -> {headers, Props#'P_basic'.headers};
-        (priority) -> {priority, Props#'P_basic'.priority};
-        (expiration) -> {expiration, Props#'P_basic'.expiration};
-        (content_type) -> {content_type, Props#'P_basic'.content_type};
-        (content_encoding) -> {content_encoding, Props#'P_basic'.content_encoding};
-        (delivery_mode) -> {delivery_mode, Props#'P_basic'.delivery_mode};
-        (correlation_id) -> {correlation_id, Props#'P_basic'.correlation_id};
-        (message_id) -> {message_id, Props#'P_basic'.message_id};
-        (user_id) -> {user_id, Props#'P_basic'.user_id};
-        (app_id) -> {app_id, Props#'P_basic'.app_id};
-        (reply_to) -> {reply_to, Props#'P_basic'.reply_to}
-    end, Keys),
-    maps:from_list(Values ++ [{payload, Payload}]).
+call_optional(Module, {Function, Arity}, Args) ->
+    Functions = erlang:apply(Module, module_info, [exports]),
+    case lists:member({Function, Arity}, Functions) of
+        true -> erlang:apply(Module, Function, Args);
+        false -> undefined
+    end.
 
 make_pool(_, #{name := Name} = Opts) ->
     Count = maps:get(worker_count, Opts, 1),
     Prefetch = maps:get(prefetch_count, Opts, 1),
     Overflow = Count * Prefetch - Count,
-    [
-        {size, Count},
-        {max_overflow, Overflow},
-        {name, ?via(worker, Name)},
-        {worker_module, ?MODULE}
-    ].
+    [{size, Count}, {max_overflow, Overflow},
+        {name, ?via(worker, Name)}, {worker_module, ?MODULE}].

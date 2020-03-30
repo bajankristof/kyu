@@ -20,7 +20,7 @@ for amqp management.
 
 
 <pre><code>
-message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt; binary(), timeout =&gt; integer(), mandatory =&gt; boolean(), headers =&gt; list(), priority =&gt; integer(), expiration =&gt; integer(), content_type =&gt; binary(), content_encoding =&gt; binary(), delivery_mode =&gt; integer(), correlation_id =&gt; binary(), message_id =&gt; binary(), user_id =&gt; binary(), app_id =&gt; binary(), reply_to =&gt; binary(), execution =&gt; <a href="kyu_publisher.md#type-execution">kyu_publisher:execution()</a>}
+message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt; binary(), mandatory =&gt; boolean(), type =&gt; binary(), headers =&gt; list(), priority =&gt; integer(), expiration =&gt; integer(), timestamp =&gt; integer(), content_type =&gt; binary(), content_encoding =&gt; binary(), delivery_mode =&gt; integer(), correlation_id =&gt; binary(), cluster_id =&gt; binary(), message_id =&gt; binary(), user_id =&gt; binary(), app_id =&gt; binary(), reply_to =&gt; binary(), execution =&gt; <a href="kyu_publisher.md#type-execution">kyu_publisher:execution()</a>, timeout =&gt; infinity | integer()}
 </code></pre>
 
 <a name="index"></a>
