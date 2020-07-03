@@ -1,26 +1,26 @@
 {"1.1.0",
-[{<<"amqp_client">>,{pkg,<<"amqp_client">>,<<"3.8.2">>},0},
+[{<<"amqp_client">>,{pkg,<<"amqp_client">>,<<"3.8.5">>},0},
  {<<"credentials_obfuscation">>,
-  {pkg,<<"credentials_obfuscation">>,<<"1.1.0">>},
+  {pkg,<<"credentials_obfuscation">>,<<"2.0.0">>},
   2},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
  {<<"gproc">>,{pkg,<<"gproc">>,<<"0.8.0">>},0},
- {<<"jsx">>,{pkg,<<"jsx">>,<<"2.9.0">>},2},
+ {<<"jsx">>,{pkg,<<"jsx">>,<<"2.11.0">>},0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.8.0">>},0},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.2">>},0},
- {<<"rabbit_common">>,{pkg,<<"rabbit_common">>,<<"3.8.2">>},1},
+ {<<"rabbit_common">>,{pkg,<<"rabbit_common">>,<<"3.8.5">>},1},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.7.1">>},2},
- {<<"recon">>,{pkg,<<"recon">>,<<"2.5.0">>},2}]}.
+ {<<"recon">>,{pkg,<<"recon">>,<<"2.5.1">>},2}]}.
 [
 {pkg_hash,[
- {<<"amqp_client">>, <<"B50AC381C3C016A697D6AB8F08367043A08358CFEB8EE97832CCC7D101E59CEF">>},
- {<<"credentials_obfuscation">>, <<"513793CC20C18AFC9E03E584B436192A751A8344890E03A8741C65C8D6866FAB">>},
+ {<<"amqp_client">>, <<"279A73DCBDC5F797D7874D600A51FAD6A82A716EEC40AB1F25E3497939FC7F2D">>},
+ {<<"credentials_obfuscation">>, <<"65425424414B91F85FEB2C8F7E09AF65E91B6E311842E4CA07F6AABE20F5E58C">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
  {<<"gproc">>, <<"CEA02C578589C61E5341FCE149EA36CCEF236CC2ECAC8691FBA408E7EA77EC2F">>},
- {<<"jsx">>, <<"D2F6E5F069C00266CAD52FB15D87C428579EA4D7D73A33669E12679E203329DD">>},
+ {<<"jsx">>, <<"08154624050333919B4AC1B789667D5F4DB166DC50E190C4D778D1587F102EE0">>},
  {<<"lager">>, <<"3402B9A7E473680CA179FC2F1D827CAB88DD37DD1E6113090C6F45EF05228A1C">>},
  {<<"poolboy">>, <<"392B007A1693A64540CEAD79830443ABF5762F5D30CF50BC95CB2C1AAAFA006B">>},
- {<<"rabbit_common">>, <<"6F5653E7BA8BBF76447B126D1AC224E1BE5ED853808542BD67CBCFF87FBD2493">>},
+ {<<"rabbit_common">>, <<"E69C2FDB205A4C709F4F003A91B2044FDAB7E7196220388F57F13AB7187E0AA7">>},
  {<<"ranch">>, <<"6B1FAB51B49196860B733A49C07604465A47BDB78AA10C1C16A3D199F7F8C881">>},
- {<<"recon">>, <<"2F7FCBEC2C35034BADE2F9717F77059DC54EB4E929A3049CA7BA6775C0BD66CD">>}]}
+ {<<"recon">>, <<"430FFA60685AC1EFDFB1FE4C97B8767C92D0D92E6E7C3E8621559BA77598678A">>}]}
 ].

@@ -211,6 +211,7 @@ terminate(_, #state{name = Name, unacked = Unacked}) ->
 
 %% PRIVATE FUNCTIONS
 
+%% @hidden
 call_optional(Module, {Function, Arity}, Args) ->
     Functions = erlang:apply(Module, module_info, [exports]),
     case lists:member({Function, Arity}, Functions) of
@@ -218,6 +219,7 @@ call_optional(Module, {Function, Arity}, Args) ->
         false -> undefined
     end.
 
+%% @hidden
 make_pool(_, #{name := Name} = Opts) ->
     Count = maps:get(worker_count, Opts, 1),
     Prefetch = maps:get(prefetch_count, Opts, 1),

@@ -22,14 +22,16 @@
 
 -type name() :: term().
 -type opts() :: #{
-    id := supervisor:child_spec(),
+    id := supervisor:child_id(),
     name := name(),
     queue := binary(),
     worker_module := atom(),
     worker_state := map(),
     worker_count := integer(),
     prefetch_count := integer(),
-    commands := list()
+    duplex := boolean(),
+    commands := list(),
+    channel := kyu_channel:name()
 }.
 -export_type([name/0, opts/0]).
 
@@ -59,12 +61,12 @@ where(Name) ->
     gproc:where(?server(consumer, Name)).
 
 %% @doc Returns the name of the consumer's connection server.
--spec connection(Name :: name()) -> term().
+-spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
     kyu_wrangler:connection(Name).
 
-%% @doc Returns the underlying amqp channel.
--spec channel(Name :: name()) -> pid() | undefined.
+%% @doc Returns the name of the consumer's channel server.
+-spec channel(Name :: name()) -> kyu_channel:name().
 channel(Name) ->
     kyu_wrangler:channel(Name).
 
@@ -86,9 +88,28 @@ await(Name, Timeout) ->
 %% CALLBACK FUNCTIONS
 
 %% @hidden
+init({Connection, #{duplex := true} = Opts}) ->
+    Modules = [kyu_wrangler, kyu_worker, kyu_publisher],
+    init(Connection, maps:without([id], Opts), Modules);
 init({Connection, Opts}) ->
+    Modules = [kyu_wrangler, kyu_worker],
+    init(Connection, maps:without([id], Opts), Modules).
+
+%% PRIVATE FUNCTIONS
+
+%% @hidden
+init(Connection, #{channel := Channel} = Opts, Modules) ->
     ok = check_opts(Opts),
     Specs = lists:map(fun (Module) ->
-        erlang:apply(Module, child_spec, [Connection, Opts])
-    end, [kyu_worker, kyu_wrangler]),
-    {ok, {{one_for_all, 5, 3600}, Specs}}.
+        Module:child_spec(Connection, Opts#{channel => Channel})
+    end, Modules),
+    {ok, flags(Specs)};
+init(Connection, Opts, Modules) ->
+    ok = check_opts(Opts),
+    Specs = lists:foldl(fun (Module, Acc) ->
+        Acc ++ [Module:child_spec(Connection, Opts#{channel => maps:get(name, Opts)})]
+    end, [kyu_channel:child_spec(Connection, Opts)], Modules),
+    {ok, flags(Specs)}.
+
+%% @hidden
+flags(Specs) -> {{one_for_all, 5, 3600}, Specs}.

@@ -4,7 +4,7 @@
 
 -export([
     publish/2,
-    declare/3
+    declare/2
 ]).
 
 -include("amqp.hrl").
@@ -43,33 +43,29 @@ publish(Publisher, Message) ->
     kyu_publisher:publish(Publisher, Message).
 
 %% @doc Makes one or more declarations on the amqp channel.
--spec declare(
-    Connection :: kyu_connection:name(),
-    Channel :: pid(),
-    Command :: list() | tuple()
-) -> term().
-declare(_, _, []) -> ok;
-declare(Connection, Channel, [_|_] = Commands) ->
-    lists:map(fun (Command) ->
-        kyu:declare(Connection, Channel, Command)
-    end, Commands);
-declare(_, Channel, #'exchange.declare'{} = Command) ->
-    #'exchange.declare_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'exchange.delete'{} = Command) ->
-    #'exchange.delete_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'exchange.bind'{} = Command) ->
-    #'exchange.bind_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'exchange.unbind'{} = Command) ->
-    #'exchange.unbind_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'queue.declare'{} = Command) ->
-    #'queue.declare_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'queue.bind'{} = Command) ->
-    #'queue.bind_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'queue.purge'{} = Command) ->
-    #'queue.purge_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'queue.delete'{} = Command) ->
-    #'queue.delete_ok'{} = amqp_channel:call(Channel, Command);
-declare(_, Channel, #'queue.unbind'{} = Command) ->
-    #'queue.unbind_ok'{} = amqp_channel:call(Channel, Command);
-declare(Connection, Channel, Command) ->
-    kyu_management:declare(Connection, Channel, Command).
+-spec declare(Channel :: kyu_channel:name(), Command :: list() | tuple()) -> ok.
+declare(_, []) -> ok;
+declare(Channel, [_|_] = Commands) ->
+    lists:foldl(fun (Command, _) ->
+        kyu:declare(Channel, Command)
+    end, ok, Commands);
+declare(Channel, #'exchange.declare'{} = Command) ->
+    #'exchange.declare_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'exchange.delete'{} = Command) ->
+    #'exchange.delete_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'exchange.bind'{} = Command) ->
+    #'exchange.bind_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'exchange.unbind'{} = Command) ->
+    #'exchange.unbind_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'queue.declare'{} = Command) ->
+    #'queue.declare_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'queue.bind'{} = Command) ->
+    #'queue.bind_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'queue.purge'{} = Command) ->
+    #'queue.purge_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'queue.delete'{} = Command) ->
+    #'queue.delete_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, #'queue.unbind'{} = Command) ->
+    #'queue.unbind_ok'{} = kyu_channel:apply(Channel, call, [Command]), ok;
+declare(Channel, Command) ->
+    kyu_management:declare(Channel, Command), ok.

@@ -90,38 +90,39 @@ init_per_testcase(Case, Config) ->
     % dbg:tpl(kyu_worker, handle_continue, '_', cx),
     % dbg:tpl(kyu_wrangler, handle_info, '_', cx),
     % dbg:tpl(poolboy, checkout, '_', cx),
-    Binary = erlang:atom_to_binary(Case, utf8),
+    Name = erlang:atom_to_binary(Case, utf8),
     Connection = ?config(connection, Config),
-    {ok, Channel} = kyu_connection:channel(Connection),
-    [{name, Binary}, {channel, Channel}, {queue, Binary}] ++ Config.
+    Channel = erlang:make_ref(),
+    {ok, _} = kyu_channel:start_link(Connection, #{name => Channel}),
+    ok = kyu_channel:await(Channel),
+    [{name, Name}, {channel, Channel}, {queue, Name}] ++ Config.
 
 end_per_testcase(_, Config) ->
     dbg:stop_clear(),
     Channel = ?config(channel, Config),
-    case erlang:process_info(Channel) of
+    case kyu_channel:where(Channel) of
         undefined -> ok;
-        _ -> amqp_channel:close(Channel)
+        _ -> kyu_channel:stop(Channel)
     end.
 
 can_declare_exchange(Config) ->
-    Connection = ?config(connection, Config),
     Channel = ?config(channel, Config),
-    kyu:declare(Connection, Channel, #'exchange.declare'{exchange = ?CTEXG, type = ?CTEXGT}),
-    kyu:declare(Connection, Channel, #'exchange.delete'{exchange = ?CTEXG}).
+    kyu:declare(Channel, #'exchange.declare'{exchange = ?CTEXG, type = ?CTEXGT}),
+    kyu:declare(Channel, #'exchange.delete'{exchange = ?CTEXG}).
 
 can_declare_queue(Config) ->
     Connection = ?config(connection, Config),
     Channel = ?config(channel, Config),
     Queue = ?config(queue, Config),
-    kyu:declare(Connection, Channel, #'queue.declare'{queue = Queue}),
+    kyu:declare(Channel, #'queue.declare'{queue = Queue}),
     {ok, #{}} = kyu_management:get_queue(Connection, Queue),
-    kyu:declare(Connection, Channel, #'queue.delete'{queue = Queue}).
+    kyu:declare(Channel, #'queue.delete'{queue = Queue}).
 
 can_bind_queue(Config) ->
     Connection = ?config(connection, Config),
     Channel = ?config(channel, Config),
     Queue = ?config(queue, Config),
-    kyu:declare(Connection, Channel, [
+    ok = kyu:declare(Channel, [
         #'queue.declare'{queue = Queue},
         #'queue.bind'{
             routing_key = <<"kyu.binding.normal">>,
@@ -129,7 +130,7 @@ can_bind_queue(Config) ->
             exchange = <<"amq.topic">>
         }
     ]),
-    kyu:declare(Connection, Channel, #'kyu.queue.bind'{
+    ok = kyu:declare(Channel, #'kyu.queue.bind'{
         routing_key = <<"kyu.binding.survivor">>,
         queue = Queue,
         exchange = <<"amq.topic">>,
@@ -139,33 +140,33 @@ can_bind_queue(Config) ->
         {ok, [#{<<"routing_key">> := <<"kyu.binding.survivor">>}]},
         kyu_management:get_queue_bindings(Connection, Queue, <<"amq.topic">>)
     ),
-    kyu:declare(Connection, Channel, #'kyu.queue.unbind'{
+    ok = kyu:declare(Channel, #'kyu.queue.unbind'{
         pattern = <<"^.*$">>,
         queue = Queue,
         exchange = <<"amq.topic">>
     }),
     {ok, []} = kyu_management:get_queue_bindings(Connection, Queue, <<"amq.topic">>),
-    kyu:declare(Connection, Channel, #'queue.delete'{queue = Queue}).
+    ok = kyu:declare(Channel, #'queue.delete'{queue = Queue}).
 
 can_connection_survive(Config) ->
     Connection = ?config(connection, Config),
-    Pid = kyu_connection:connection(Connection),
+    Pid = kyu_connection:pid(Connection),
     erlang:exit(Pid, kill),
     ok = kyu_connection:await(Connection),
-    ?assertNotEqual(Pid, kyu_connection:connection(Connection)).
+    ?assertNotEqual(Pid, kyu_connection:pid(Connection)).
 
 can_publisher_survive(Config) ->
     Name = ?config(name, Config),
     Connection = ?config(connection, Config),
     {ok, _} = kyu_publisher:start_link(Connection, #{name => Name}),
     ok = kyu_publisher:await(Name),
-    Old = kyu_publisher:channel(Name),
+    Old = kyu_channel:pid(Name),
     ?assertEqual(true, erlang:is_pid(Old)),
     ok = kyu_connection:stop(Connection),
     ok = kyu_connection:await(Connection),
     ok = kyu_publisher:await(Name),
-    Channel = kyu_publisher:channel(Name),
-    ?assertNotEqual(Old, Channel),
+    New = kyu_channel:pid(Name),
+    ?assertNotEqual(Old, New),
     ok = kyu_publisher:stop(Name).
 
 can_consumer_survive(Config) ->
@@ -180,14 +181,14 @@ can_consumer_survive(Config) ->
         commands => [#'queue.declare'{queue = Queue}]
     }),
     ok = kyu_consumer:await(Name),
-    Old = kyu_consumer:channel(Name),
+    Old = kyu_channel:pid(Name),
     ?assertEqual(true, erlang:is_pid(Old)),
     ok = kyu_connection:stop(Connection),
     ok = kyu_connection:await(Connection),
     ok = kyu_consumer:await(Name),
-    Channel = kyu_consumer:channel(Name),
-    ?assertNotEqual(Old, Channel),
-    kyu:declare(Connection, Channel, #'queue.delete'{queue = Queue}),
+    New = kyu_channel:pid(Name),
+    ?assertNotEqual(Old, New),
+    kyu:declare(Name, #'queue.delete'{queue = Queue}),
     erlang:exit(kyu_consumer:where(Name), normal).
 
 can_publish_supervised(Config) ->
@@ -291,10 +292,9 @@ start_features(Config, Callback) ->
 
 stop_features(Config) ->
     Name = ?config(name, Config),
-    Connection = ?config(connection, Config),
-    Channel = kyu_consumer:channel(Name),
+    Channel = ?config(channel, Config),
     Queue = ?config(queue, Config),
-    kyu:declare(Connection, Channel, [
+    kyu:declare(Channel, [
         #'exchange.delete'{exchange = ?CTEXG},
         #'queue.delete'{queue = Queue}
     ]),

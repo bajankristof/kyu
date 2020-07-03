@@ -35,10 +35,8 @@
     name :: kyu_consumer:name(),
     connection :: kyu_connection:name(),
     opts :: kyu_consumer:opts(),
-    commands :: list(),
+    channel :: kyu_channel:name(),
     queue :: binary(),
-    channel = undefined :: undefined | pid(),
-    monitor = undefined :: undefined | reference(),
     tag = undefined
 }).
 
@@ -74,11 +72,11 @@ cast(Name, Request) ->
 where(Name) ->
     gproc:where(?server(wrangler, Name)).
 
--spec connection(Name :: kyu_consumer:name()) -> term().
+-spec connection(Name :: kyu_consumer:name()) -> kyu_connection:name().
 connection(Name) ->
     call(Name, connection).
 
--spec channel(Name :: kyu_consumer:name()) -> pid() | undefined.
+-spec channel(Name :: kyu_consumer:name()) -> kyu_channel:name().
 channel(Name) ->
     call(Name, channel).
 
@@ -98,17 +96,15 @@ await(Name, Timeout) ->
 
 %% CALLBACK FUNCTIONS
 
-init({Connection, #{name := Name, queue := Queue} = Opts}) ->
+init({Connection, #{name := Name} = Opts}) ->
     lager:md([{wrangler, Name}]),
     % lager:debug("Kyu wrangler process started"),
-    kyu_connection:subscribe(Connection),
-    Commands = maps:get(commands, Opts, []),
     {ok, #state{
         name = Name,
         connection = Connection,
         opts = Opts,
-        commands = Commands,
-        queue = Queue
+        channel = maps:get(channel, Opts, {self(), Name}),
+        queue = maps:get(queue, Opts)
     }, {continue, init}}.
 
 handle_call(connection, _, #state{connection = Connection} = State) ->
@@ -117,59 +113,53 @@ handle_call(channel, _, #state{channel = Channel} = State) ->
     {reply, Channel, State};
 handle_call(queue, _, #state{queue = Queue} = State) ->
     {reply, Queue, State};
-handle_call(await, Caller, #state{name = Name, channel = undefined} = State) ->
-    kyu_waitress:register(?event(wrangler, Name), Caller),
-    {noreply, State};
-handle_call(await, _, #state{channel = _} = State) ->
-    {reply, ok, State};
-handle_call(_, _, #state{channel = undefined} = State) ->
-    {reply, ?ERROR_NO_CHANNEL, State};
+handle_call(await, Caller, #state{name = Name, channel = Channel} = State) ->
+    case kyu_channel:pid(Channel) of
+        undefined ->
+            kyu_waitress:register(?event(wrangler, Name), Caller),
+            {noreply, State};
+        _ -> {reply, ok, State}
+    end;
 handle_call({ack, Tag}, _, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = Tag}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.ack'{delivery_tag = Tag}]),
     {reply, ok, State};
 handle_call({reject, Tag}, _, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.reject'{delivery_tag = Tag}]),
     {reply, ok, State};
 handle_call({remove, Tag}, _, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag, requeue = false}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.reject'{delivery_tag = Tag, requeue = false}]),
     {reply, ok, State};
 handle_call(_, _, State) ->
     {noreply, State}.
 
-handle_cast(_, #state{channel = undefined} = State) ->
-    {noreply, State};
 handle_cast({ack, Tag}, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.ack'{delivery_tag = Tag}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.ack'{delivery_tag = Tag}]),
     {noreply, State};
 handle_cast({reject, Tag}, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.reject'{delivery_tag = Tag}]),
     {noreply, State};
 handle_cast({remove, Tag}, #state{channel = Channel} = State) ->
-    ok = amqp_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag, requeue = false}),
+    ok = kyu_channel:apply(Channel, cast, [#'basic.reject'{delivery_tag = Tag, requeue = false}]),
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_continue(init, #state{channel = undefined, connection = Connection, commands = Commands} = State) ->
-    case catch kyu_connection:channel(Connection) of
-        {ok, Channel} ->
-            kyu:declare(Connection, Channel, Commands),
-            Monitor = erlang:monitor(process, Channel),
-            Next = State#state{channel = Channel, monitor = Monitor},
-            {noreply, Next, {continue, {init, prefetch}}};
-        {'EXIT', {noproc, _}} -> {noreply, State};
-        ?ERROR_NO_CONNECTION -> {noreply, State};
-        Reason -> {stop, Reason, State}
-    end;
+handle_continue(init, #state{opts = #{channel := Channel}} = State) ->
+    kyu_channel:subscribe(Channel),
+    {noreply, State};
+handle_continue(init, #state{connection = Connection, channel = Channel, opts = Opts} = State) ->
+    true = kyu_channel:subscribe(Channel),
+    {ok, _} = kyu_channel:start_link(Connection, Opts#{name => Channel}),
+    {noreply, State};
 handle_continue({init, prefetch}, #state{channel = Channel, opts = Opts} = State) ->
     Count = maps:get(worker_count, Opts, 1),
     Prefetch = maps:get(prefetch_count, Opts, 1),
     Command = #'basic.qos'{prefetch_count = Count * Prefetch},
-    #'basic.qos_ok'{} = amqp_channel:call(Channel, Command),
+    #'basic.qos_ok'{} = kyu_channel:apply(Channel, call, [Command]),
     {noreply, State, {continue, {init, consume}}};
 handle_continue({init, consume}, #state{channel = Channel, queue = Queue} = State) ->
     Command = #'basic.consume'{queue = Queue},
-    #'basic.consume_ok'{consumer_tag = Tag} = amqp_channel:call(Channel, Command),
+    #'basic.consume_ok'{consumer_tag = Tag} = kyu_channel:apply(Channel, call, [Command]),
     {noreply, State#state{tag = Tag}, {init, fin}};
 handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
@@ -178,25 +168,20 @@ handle_continue({init, fin}, #state{name = Name} = State) ->
 handle_continue(_, State) ->
     {noreply, State}.
 
-handle_info({#'basic.deliver'{} = Command, Content}, State) ->
-    Worker = maps:get(name, State#state.opts),
+handle_info({#'basic.deliver'{} = Command, Content}, #state{name = Name} = State) ->
     #'basic.deliver'{delivery_tag = Tag, routing_key = Key} = Command,
-    ok = kyu_worker:message(Worker, {message, Tag, Key, Content}),
+    ok = kyu_worker:message(Name, {message, Tag, Key, Content}),
     {noreply, State};
-handle_info({'DOWN', Monitor, _, _, normal}, #state{monitor = Monitor} = State) ->
-    {noreply, State#state{channel = undefined, monitor = undefined}};
-handle_info({'DOWN', Monitor, _, _, {_, {connection_closing, _}}}, #state{monitor = Monitor} = State) ->
-    {noreply, State#state{channel = undefined, monitor = undefined}};
-handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
-    {noreply, State#state{channel = undefined, monitor = undefined}, {continue, init}};
-handle_info(?message(connection, Connection, up), #state{connection = Connection} = State) ->
-    {noreply, State, {continue, init}};
-handle_info(_, State) ->
+handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
+    ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
+    {noreply, State, {continue, {init, prefetch}}};
+handle_info(?message(channel, Channel, down), #state{channel = Channel} = State) ->
+    {noreply, State};
+handle_info(Info, State) ->
+    lager:warning("Kyu wrangler received unrecognizable info~n~p", [Info]),
     {noreply, State}.
 
-terminate(_, #state{channel = undefined}) -> ok;
-terminate(_, #state{channel = Channel, tag = undefined}) ->
-    amqp_channel:close(Channel);
 terminate(_, #state{channel = Channel, tag = Tag}) ->
-    amqp_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
-    amqp_channel:close(Channel).
+    Command = #'basic.cancel'{consumer_tag = Tag},
+    #'basic.cancel_ok'{} = kyu_channel:apply(Channel, call, [Command]),
+    ok.
