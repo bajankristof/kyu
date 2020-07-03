@@ -167,6 +167,7 @@ handle_call(await, _, #state{channel = _} = State) ->
 handle_call(_, _, State) ->
     {noreply, State}.
 
+%% @hidden
 handle_cast(_, State) ->
     {noreply, State}.
 
