@@ -44,13 +44,14 @@
 -define(CTWS, #{}).
 
 suite() -> [
-    {timetrap, 10000}
+    {timetrap, 64000}
 ].
 
 all() -> [
-    {group, commands},
-    {group, lifecycle},
-    {group, features}
+    % {group, commands},
+    {group, lifecycle}
+    % {group, lifecycle},
+    % {group, features}
 ].
 
 groups() -> [
@@ -60,8 +61,8 @@ groups() -> [
         can_bind_queue
     ]},
     {lifecycle, [], [
-        can_connection_survive,
-        can_publisher_survive,
+        % can_connection_survive,
+        % can_publisher_survive,
         can_consumer_survive
     ]},
     {features, [], [
@@ -83,13 +84,13 @@ end_per_group(_, _) ->
 
 init_per_testcase(Case, Config) ->
     dbg:tracer(),
-    % dbg:p(all, c),
-    % dbg:tpl(kyu_worker, init, '_', cx),
-    % dbg:tpl(kyu_worker, cast, '_', cx),
-    % dbg:tpl(kyu_worker, handle_cast, '_', cx),
-    % dbg:tpl(kyu_worker, handle_continue, '_', cx),
-    % dbg:tpl(kyu_wrangler, handle_info, '_', cx),
-    % dbg:tpl(poolboy, checkout, '_', cx),
+    dbg:p(all, c),
+    %dbg:tpl(kyu_connection, '_', '_', []),
+    %dbg:tpl(kyu_channel, '_', '_', []),
+    %dbg:tpl(kyu_publisher, '_', '_', []),
+    dbg:tpl(kyu_wrangler, '_', '_', []),
+    %dbg:tpl(kyu_worker, '_', '_', []),
+    dbg:tpl(poolboy, checkout, '_', []),
     Name = erlang:atom_to_binary(Case, utf8),
     Connection = ?config(connection, Config),
     Channel = erlang:make_ref(),

@@ -10,6 +10,7 @@
     call/3,
     cast/2,
     where/1,
+    status/1,
     connection/1,
     channel/1,
     queue/1,
@@ -37,6 +38,8 @@
     opts :: kyu_consumer:opts(),
     channel :: kyu_channel:name(),
     queue :: binary(),
+    monitor = undefined :: reference(),
+    status = down :: up | down,
     tag = undefined
 }).
 
@@ -72,6 +75,13 @@ cast(Name, Request) ->
 where(Name) ->
     gproc:where(?server(wrangler, Name)).
 
+-spec status(Name :: kyu_consumer:name()) -> up | down.
+status(Name) ->
+    case catch call(Name, status) of
+        {'EXIT', {noproc, _}} -> down;
+        Status -> Status
+    end.
+
 -spec connection(Name :: kyu_consumer:name()) -> kyu_connection:name().
 connection(Name) ->
     call(Name, connection).
@@ -103,23 +113,23 @@ init({Connection, #{name := Name} = Opts}) ->
         name = Name,
         connection = Connection,
         opts = Opts,
-        channel = maps:get(channel, Opts, {self(), Name}),
+        channel = maps:get(channel, Opts, Name),
         queue = maps:get(queue, Opts)
     }, {continue, init}}.
 
+handle_call(status, _, #state{status = Status} = State) ->
+    {reply, Status, State};
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call(channel, _, #state{channel = Channel} = State) ->
     {reply, Channel, State};
 handle_call(queue, _, #state{queue = Queue} = State) ->
     {reply, Queue, State};
-handle_call(await, Caller, #state{name = Name, channel = Channel} = State) ->
-    case kyu_channel:pid(Channel) of
-        undefined ->
-            kyu_waitress:register(?event(wrangler, Name), Caller),
-            {noreply, State};
-        _ -> {reply, ok, State}
-    end;
+handle_call(await, _, #state{status = up} = State) ->
+    {reply, ok, State};
+handle_call(await, Caller, #state{name = Name} = State) ->
+    kyu_waitress:register(?event(wrangler, Name), Caller),
+    {noreply, State};
 handle_call({ack, Tag}, _, #state{channel = Channel} = State) ->
     ok = kyu_channel:apply(Channel, cast, [#'basic.ack'{delivery_tag = Tag}]),
     {reply, ok, State};
@@ -145,11 +155,17 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 handle_continue(init, #state{opts = #{channel := Channel}} = State) ->
-    kyu_channel:subscribe(Channel),
-    {noreply, State};
-handle_continue(init, #state{connection = Connection, channel = Channel, opts = Opts} = State) ->
     true = kyu_channel:subscribe(Channel),
-    {ok, _} = kyu_channel:start_link(Connection, Opts#{name => Channel}),
+    case kyu_channel:status(Channel) of
+        up -> self() ! ?message(channel, Channel, up);
+        down -> ok
+    end,
+    {noreply, State};
+handle_continue(init, #state{connection = Connection, channel = Channel} = State) ->
+    true = kyu_channel:subscribe(Channel),
+    {ok, _} = kyu_channel:start_link(Connection, #{name => Channel}),
+    {noreply, State};
+handle_continue({init, _}, #state{status = down} = State) ->
     {noreply, State};
 handle_continue({init, prefetch}, #state{channel = Channel, opts = Opts} = State) ->
     Count = maps:get(worker_count, Opts, 1),
@@ -168,20 +184,26 @@ handle_continue({init, fin}, #state{name = Name} = State) ->
 handle_continue(_, State) ->
     {noreply, State}.
 
+handle_info(#'basic.consume_ok'{}, #state{} = State) ->
+    {noreply, State};
 handle_info({#'basic.deliver'{} = Command, Content}, #state{name = Name} = State) ->
     #'basic.deliver'{delivery_tag = Tag, routing_key = Key} = Command,
     ok = kyu_worker:message(Name, {message, Tag, Key, Content}),
     {noreply, State};
 handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
+    Monitor = erlang:monitor(process, kyu_channel:pid(Channel)),
     ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
-    {noreply, State, {continue, {init, prefetch}}};
+    {noreply, State#state{monitor = Monitor, status = up}, {continue, {init, prefetch}}};
 handle_info(?message(channel, Channel, down), #state{channel = Channel} = State) ->
-    {noreply, State};
+    {noreply, State#state{status = down}};
+handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
+    {noreply, State#state{status = down}};
 handle_info(Info, State) ->
     lager:warning("Kyu wrangler received unrecognizable info~n~p", [Info]),
     {noreply, State}.
 
-terminate(_, #state{channel = Channel, tag = Tag}) ->
+terminate(_, #state{status = down}) -> ok;
+terminate(_, #state{channel = Channel, tag = Tag, status = up}) ->
     Command = #'basic.cancel'{consumer_tag = Tag},
     #'basic.cancel_ok'{} = kyu_channel:apply(Channel, call, [Command]),
     ok.

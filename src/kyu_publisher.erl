@@ -11,6 +11,7 @@
     call/3,
     cast/2,
     where/1,
+    status/1,
     connection/1,
     channel/1,
     option/3,
@@ -39,8 +40,8 @@
 -type opts() :: #{
     id := supervisor:child_id(),
     name := name(),
-    confirms := boolean(),
-    channel := kyu_channel:name()
+    channel := kyu_channel:name(),
+    confirms := boolean()
 }.
 -type execution() :: sync | async | supervised.
 -export_type([name/0, opts/0, execution/0]).
@@ -50,7 +51,8 @@
     connection :: kyu_connection:name(),
     opts :: opts(),
     channel :: kyu_channel:name(),
-    confirms :: boolean(),
+    monitor = undefined :: reference(),
+    status = down :: up | down,
     tags = #{}
 }).
 
@@ -94,6 +96,14 @@ cast(Name, Request) ->
 %% -spec where(Name :: name()) -> pid() | undefined.
 where(Name) ->
     gproc:where(?server(publisher, Name)).
+
+%% @doc Returns the up atom if the publisher is running and has an active channel.
+-spec status(Name :: name()) -> up | down.
+status(Name) ->
+    case catch call(Name, status) of
+        {'EXIT', {noproc, _}} -> down;
+        Status -> Status
+    end.
 
 %% @doc Returns the name of the publisher's connection server.
 -spec connection(Name :: name()) -> kyu_connection:name().
@@ -148,26 +158,27 @@ init({Connection, #{name := Name} = Opts}) ->
         name = Name,
         connection = Connection,
         opts = Opts,
-        channel = maps:get(channel, Opts, {self(), Name}),
-        confirms = maps:get(confirms, Opts, true)
+        channel = maps:get(channel, Opts, Name)
     }, {continue, init}}.
 
 %% @hidden
+handle_call(status, _, #state{status = Status} = State) ->
+    {reply, Status, State};
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call(channel, _, #state{channel = Channel} = State) ->
     {reply, Channel, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
     {reply, maps:get(Key, Opts, Value), State};
-handle_call(#publish{} = Command, Caller, State) ->
+handle_call(#publish{}, _, #state{status = down} = State) ->
+    {reply, ?ERROR_NO_CHANNEL, State};
+handle_call(#publish{} = Command, Caller, #state{} = State) ->
     handle_publish(Command, Caller, State);
-handle_call(await, Caller, #state{name = Name, channel = Channel} = State) ->
-    case kyu_channel:pid(Channel) of
-        undefined ->
-            kyu_waitress:register(?event(publisher, Name), Caller),
-            {noreply, State};
-        _ -> {reply, ok, State}
-    end;
+handle_call(await, _, #state{status = up} = State) ->
+    {reply, ok, State};
+handle_call(await, Caller, #state{name = Name} = State) ->
+    kyu_waitress:register(?event(publisher, Name), Caller),
+    {noreply, State};
 handle_call(_, _, State) ->
     {noreply, State}.
 
@@ -178,16 +189,22 @@ handle_cast(_, State) ->
 %% @hidden
 handle_continue(init, #state{opts = #{channel := Channel}} = State) ->
     true = kyu_channel:subscribe(Channel),
+    case kyu_channel:status(Channel) of
+        up -> self() ! ?message(channel, Channel, up);
+        down -> ok
+    end,
     {noreply, State};
 handle_continue(init, #state{connection = Connection, channel = Channel} = State) ->
     true = kyu_channel:subscribe(Channel),
     {ok, _} = kyu_channel:start_link(Connection, #{name => Channel}),
     {noreply, State};
-handle_continue({init, confirms}, #state{channel = Channel, confirms = true} = State) ->
+handle_continue({init, _}, #state{status = down} = State) ->
+    {noreply, State};
+handle_continue({init, confirms}, #state{opts = #{confirms := false}} = State) ->
+    {noreply, State, {continue, {init, fin}}};
+handle_continue({init, confirms}, #state{channel = Channel} = State) ->
     #'confirm.select_ok'{} = kyu_channel:apply(Channel, call, [#'confirm.select'{}]),
     kyu_channel:apply(Channel, register_confirm_handler, [self()]),
-    {noreply, State, {continue, {init, fin}}};
-handle_continue({init, confirms}, #state{confirms = _} = State) ->
     {noreply, State, {continue, {init, fin}}};
 handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
@@ -205,37 +222,34 @@ handle_continue(_, State) ->
 
 %% @hidden
 handle_info({#'basic.return'{reply_text = Text}, #amqp_msg{props = #'P_basic'{message_id = Tag}}}, State) ->
-    lager:info("basic return"),
     {noreply, State, {continue, {reply, Tag, {error, Text}}}};
 handle_info(#'basic.nack'{delivery_tag = Seq}, State) ->
-    lager:info("basic nack"),
     {noreply, State, {continue, {reply, Seq, ?ERROR_NOT_CONFIRMED}}};
 handle_info(#'basic.ack'{delivery_tag = Seq}, State) ->
-    lager:info("basic ack"),
     {noreply, State, {continue, {reply, Seq, ok}}};
 handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
+    Monitor = erlang:monitor(process, kyu_channel:pid(Channel)),
     ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
     kyu_channel:apply(Channel, register_return_handler, [self()]),
-    {noreply, State, {continue, {init, confirms}}};
+    {noreply, State#state{monitor = Monitor, status = up}, {continue, {init, confirms}}};
 handle_info(?message(channel, Channel, down), #state{channel = Channel} = State) ->
-    {noreply, State};
+    {noreply, State#state{status = down}};
+handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
+    {noreply, State#state{status = down}};
 handle_info(Info, State) ->
     lager:warning("Kyu publisher received unrecognizable info~n~p", [Info]),
     {noreply, State}.
 
 %% @hidden
-terminate(_, #state{} = State) ->
-    case catch kyu_channel:pid(State#state.channel) of
-        Channel when erlang:is_pid(Channel) ->
-            amqp_channel:unregister_return_handler(Channel),
-            amqp_channel:unregister_confirm_handler(Channel);
-        _ -> ok
-    end.
+terminate(_, #state{channel = Channel, status = up}) ->
+    kyu_channel:apply(Channel, unregister_return_handler, []),
+    kyu_channel:apply(Channel, unregister_confirm_handler, []);
+terminate(_, _) -> ok.
 
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-handle_publish(#publish{} = Command, _, #state{channel = Channel, confirms = false} = State) ->
+handle_publish(#publish{} = Command, _, #state{channel = Channel, opts = #{confirms := false}} = State) ->
     ok = kyu_channel:apply(Channel, cast, make_args(Command, State)),
     {reply, ok, State};
 handle_publish(#publish{execution = async} = Command, _, #state{channel = Channel} = State) ->

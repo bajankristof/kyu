@@ -112,4 +112,4 @@ init(Connection, Opts, Modules) ->
     {ok, flags(Specs)}.
 
 %% @hidden
-flags(Specs) -> {{one_for_all, 5, 3600}, Specs}.
+flags(Specs) -> {{one_for_one, 5, 3600}, Specs}.

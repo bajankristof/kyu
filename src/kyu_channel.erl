@@ -10,6 +10,7 @@
     cast/2,
     where/1,
     pid/1,
+    status/1,
     connection/1,
     option/2,
     option/3,
@@ -83,6 +84,14 @@ where(Name) ->
 pid(Name) ->
     call(Name, pid).
 
+%% @doc Returns the up atom if the server is running and has an active channel.
+-spec status(Name :: name()) -> up | down.
+status(Name) ->
+    case catch call(Name, status) of
+        {'EXIT', {noproc, _}} -> down;
+        Status -> Status
+    end.
+
 %% @doc Returns the name of the channel's connection server.
 -spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
@@ -140,6 +149,10 @@ init({Connection, #{name := Name} = Opts}) ->
 %% @hidden
 handle_call(pid, _, #state{channel = Channel} = State) ->
     {reply, Channel, State};
+handle_call(status, _, #state{channel = undefined} = State) ->
+    {reply, down, State};
+handle_call(status, _, #state{channel = _} = State) ->
+    {reply, up, State};
 handle_call(connection, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
@@ -157,16 +170,15 @@ handle_cast(_, State) ->
 
 %% @hidden
 handle_continue(init, #state{connection = Connection, channel = undefined} = State) ->
-    case catch kyu_connection:pid(Connection) of
-        Process when erlang:is_pid(Process) ->
-            {ok, Channel} = amqp_connection:open_channel(Process),
+    case kyu_connection:status(Connection) of
+        up ->
+            {ok, Channel} = kyu_connection:apply(Connection, open_channel, []),
             Monitor = erlang:monitor(process, Channel),
             {noreply, State#state{
                 channel = Channel,
                 monitor = Monitor
             }, {continue, {init, fin}}};
-        undefined -> {noreply, State};
-        {'EXIT', {noproc, _}} -> {noreply, State}
+        down -> {noreply, State}
     end;
 handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,

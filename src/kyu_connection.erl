@@ -12,9 +12,11 @@
     cast/2,
     where/1,
     pid/1,
+    status/1,
     network/1,
     option/2,
     option/3,
+    apply/3,
     await/1,
     await/2,
     subscribe/1,
@@ -108,6 +110,14 @@ where(Name) ->
 pid(Name) ->
     call(Name, pid).
 
+%% @doc Returns the up atom if the server is running and has an active connection.
+-spec status(Name :: name()) -> up | down.
+status(Name) ->
+    case catch call(Name, status) of
+        {'EXIT', {noproc, _}} -> down;
+        Status -> Status
+    end.
+
 %% @doc Returns the connection server's network params.
 -spec network(Name :: name()) -> #amqp_params_network{}.
 network(Name) ->
@@ -122,6 +132,12 @@ option(Name, Key) ->
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
+
+%% @doc Calls a function on the connection.
+-spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
+apply(Name, Function, Args) ->
+    Connection = pid(Name),
+    erlang:apply(amqp_connection, Function, [Connection] ++ Args).
 
 %% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
@@ -160,6 +176,10 @@ init(#{name := Name} = Opts) ->
 %% @hidden
 handle_call(pid, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
+handle_call(status, _, #state{connection = undefined} = State) ->
+    {reply, down, State};
+handle_call(status, _, #state{connection = _} = State) ->
+    {reply, up, State};
 handle_call(network, _, #state{network = Network} = State) ->
     {reply, Network, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
