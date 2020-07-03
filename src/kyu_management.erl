@@ -158,6 +158,7 @@ declare(Channel, #'kyu.queue.unbind'{} = Command) ->
 
 %% PRIVATE FUNCTIONS
 
+%% @hidden
 match(_, #'kyu.queue.unbind'{except = <<>>, pattern = <<>>}) -> nomatch;
 match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{except = <<>>} = Command) ->
     Regex = Command#'kyu.queue.unbind'.pattern,

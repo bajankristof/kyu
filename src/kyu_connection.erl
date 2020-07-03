@@ -1,5 +1,5 @@
 %% @doc This module is responsible for creating
-%% and maintaining amqp connections and channels.
+%% and maintaining amqp connections.
 -module(kyu_connection).
 
 -behaviour(gen_server).
@@ -73,44 +73,44 @@
 
 %% API FUNCTIONS
 
-%% @doc Returns a connection server child spec.
+%% @doc Returns a connection child spec.
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
 child_spec(#{id := _} = Opts) ->
     #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Opts]}};
 child_spec(#{name := Name} = Opts) ->
     child_spec(Opts#{id => ?name(connection, Name)}).
 
-%% @doc Starts a connection server.
+%% @doc Starts a connection.
 -spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
 start_link(#{name := Name} = Opts) ->
     gen_server:start_link(?via(connection, Name), ?MODULE, Opts, []).
 
-%% @doc Makes a gen_server:call/2 to the connection server.
+%% @doc Makes a gen_server:call/2 to the connection.
 -spec call(Name :: name(), Request :: term()) -> term().
 call(Name, Request) ->
     gen_server:call(?via(connection, Name), Request).
 
-%% @doc Makes a gen_server:call/3 to the connection server.
+%% @doc Makes a gen_server:call/3 to the connection.
 -spec call(Name :: name(), Request :: term(), Timeout :: timeout()) -> term().
 call(Name, Request, Timeout) ->
     gen_server:call(?via(connection, Name), Request, Timeout).
 
-%% @doc Makes a gen_server:cast/2 to the connection server.
+%% @doc Makes a gen_server:cast/2 to the connection.
 -spec cast(Name :: name(), Request :: term()) -> ok.
 cast(Name, Request) ->
     gen_server:cast(?via(connection, Name), Request).
 
-%% @doc Returns the pid of the connection server.
+%% @doc Returns the pid of the connection.
 %% -spec where(Name :: name()) -> pid() | undefined.
 where(Name) ->
     gproc:where(?server(connection, Name)).
 
-%% @doc Returns the underlying amqp connection.
+%% @doc Returns the pid of the underlying amqp connection.
 -spec pid(Name :: name()) -> pid() | undefined.
 pid(Name) ->
     call(Name, pid).
 
-%% @doc Returns the up atom if the server is running and has an active connection.
+%% @doc Returns the up atom if the process is running and has an active connection.
 -spec status(Name :: name()) -> up | down.
 status(Name) ->
     case catch call(Name, status) of
@@ -118,7 +118,7 @@ status(Name) ->
         Status -> Status
     end.
 
-%% @doc Returns the connection server's network params.
+%% @doc Returns the connection's network params.
 -spec network(Name :: name()) -> #amqp_params_network{}.
 network(Name) ->
     call(Name, network).
@@ -128,12 +128,12 @@ network(Name) ->
 option(Name, Key) ->
     option(Name, Key, undefined).
 
-%% @doc Returns a value from the connection server's options.
+%% @doc Returns a value from the connection's options.
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
 
-%% @doc Calls a function on the connection.
+%% @doc Calls a function on the underlying amqp connection.
 -spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
 apply(Name, Function, Args) ->
     Connection = pid(Name),
@@ -144,19 +144,19 @@ apply(Name, Function, Args) ->
 await(Name) ->
     await(Name, ?DEFAULT_TIMEOUT).
 
-%% @doc Waits for the connection server to successfully connect.
+%% @doc Waits for the connection to successfully connect.
 -spec await(Name :: name(), Timeout :: timeout()) -> ok.
 await(Name, Timeout) ->
     Server = ?server(connection, Name),
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
-%% @doc Subscribes the calling process to events from the connection server.
+%% @doc Subscribes the calling process to events from the connection.
 -spec subscribe(Name :: name()) -> ok.
 subscribe(Name) ->
     gproc:reg({p, l, ?event(connection, Name)}).
 
-%% @doc Stops the connection server.
+%% @doc Gracefully closes the connection.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(connection, Name)).

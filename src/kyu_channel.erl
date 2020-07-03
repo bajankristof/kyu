@@ -1,3 +1,5 @@
+%% @doc This module is responsible for creating
+%% and maintaining amqp channels.
 -module(kyu_channel).
 
 -behaviour(gen_server).
@@ -74,17 +76,17 @@ call(Name, Request, Timeout) ->
 cast(Name, Request) ->
     gen_server:cast(?via(channel, Name), Request).
 
-%% @doc Returns the pid of the channel server.
+%% @doc Returns the pid of the channel.
 %% -spec where(Name :: name()) -> pid() | undefined.
 where(Name) ->
     gproc:where(?server(channel, Name)).
 
-%% @doc Returns the underlying amqp channel.
+%% @doc Returns the pid of the underlying amqp channel.
 -spec pid(Name :: name()) -> pid() | undefined.
 pid(Name) ->
     call(Name, pid).
 
-%% @doc Returns the up atom if the server is running and has an active channel.
+%% @doc Returns the up atom if the process is running and has an active channel.
 -spec status(Name :: name()) -> up | down.
 status(Name) ->
     case catch call(Name, status) of
@@ -92,7 +94,7 @@ status(Name) ->
         Status -> Status
     end.
 
-%% @doc Returns the name of the channel's connection server.
+%% @doc Returns the name of the channel's connection.
 -spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
     call(Name, connection).
@@ -102,12 +104,12 @@ connection(Name) ->
 option(Name, Key) ->
     option(Name, Key, undefined).
 
-%% @doc Returns a value from the channel server's options.
+%% @doc Returns a value from the channel's options.
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
 
-%% @doc Calls a function on the channel.
+%% @doc Calls a function on the underlying amqp channel.
 -spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
 apply(Name, Function, Args) ->
     Channel = pid(Name),
@@ -125,12 +127,12 @@ await(Name, Timeout) ->
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
-%% @doc Subscribes the calling process to events from the channel server.
+%% @doc Subscribes the calling process to events from the channel.
 -spec subscribe(Name :: name()) -> ok.
 subscribe(Name) ->
     gproc:reg({p, l, ?event(channel, Name)}).
 
-%% @doc Stops the channel server.
+%% @doc Gracefully closes the channel.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(channel, Name)).

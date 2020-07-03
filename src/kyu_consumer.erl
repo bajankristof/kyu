@@ -60,12 +60,12 @@ check_opts(#{name := _, queue := Queue, worker_module := Module, worker_state :=
 where(Name) ->
     gproc:where(?server(consumer, Name)).
 
-%% @doc Returns the name of the consumer's connection server.
+%% @doc Returns the name of the consumer's connection.
 -spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
     kyu_wrangler:connection(Name).
 
-%% @doc Returns the name of the consumer's channel server.
+%% @doc Returns the name of the consumer's channel.
 -spec channel(Name :: name()) -> kyu_channel:name().
 channel(Name) ->
     kyu_wrangler:channel(Name).
@@ -80,7 +80,7 @@ queue(Name) ->
 await(Name) ->
     kyu_wrangler:await(Name).
 
-%% @doc Waits for the consumer to successfully consume it's queue.
+%% @doc Waits for the consumer to successfully consume its queue.
 -spec await(Name :: name(), Timeout :: timeout()) -> ok.
 await(Name, Timeout) ->
     kyu_wrangler:await(Name, Timeout).

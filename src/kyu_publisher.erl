@@ -105,12 +105,12 @@ status(Name) ->
         Status -> Status
     end.
 
-%% @doc Returns the name of the publisher's connection server.
+%% @doc Returns the name of the publisher's connection.
 -spec connection(Name :: name()) -> kyu_connection:name().
 connection(Name) ->
     call(Name, connection).
 
-%% @doc Returns the name of the publisher's channel server.
+%% @doc Returns the name of the publisher's channel.
 -spec channel(Name :: name()) -> kyu_channel:name().
 channel(Name) ->
     call(Name, channel).
@@ -139,7 +139,7 @@ await(Name, Timeout) ->
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
-%% @doc Stops the publisher.
+%% @doc Gracefully stops the publisher.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(publisher, Name)).
@@ -158,7 +158,7 @@ init({Connection, #{name := Name} = Opts}) ->
         name = Name,
         connection = Connection,
         opts = Opts,
-        channel = maps:get(channel, Opts, Name)
+        channel = maps:get(channel, Opts, erlang:make_ref())
     }, {continue, init}}.
 
 %% @hidden

@@ -1,6 +1,6 @@
 {application, kyu,
  [{description, "Simplified Erlang AMQP client"},
-  {vsn, "0.1.4"},
+  {vsn, "0.2.0"},
   {registered, []},
   {mod, {kyu_app, []}},
   {applications,
@@ -15,7 +15,7 @@
    ]},
   {env,[
     {connections, [
-      #{name => <<"localhost">>}
+      #{name => localhost}
     ]}
   ]},
   {modules, []},

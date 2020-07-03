@@ -113,7 +113,7 @@ init({Connection, #{name := Name} = Opts}) ->
         name = Name,
         connection = Connection,
         opts = Opts,
-        channel = maps:get(channel, Opts, Name),
+        channel = maps:get(channel, Opts, erlang:make_ref()),
         queue = maps:get(queue, Opts)
     }, {continue, init}}.
 
@@ -176,7 +176,7 @@ handle_continue({init, prefetch}, #state{channel = Channel, opts = Opts} = State
 handle_continue({init, consume}, #state{channel = Channel, queue = Queue} = State) ->
     Command = #'basic.consume'{queue = Queue},
     #'basic.consume_ok'{consumer_tag = Tag} = kyu_channel:apply(Channel, call, [Command]),
-    {noreply, State#state{tag = Tag}, {init, fin}};
+    {noreply, State#state{tag = Tag}, {continue, {init, fin}}};
 handle_continue({init, fin}, #state{name = Name} = State) ->
     Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
     kyu_waitress:deliver(?event(wrangler, Name), Callback),

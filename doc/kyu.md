@@ -28,19 +28,19 @@ message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt;
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-3">declare/3</a></td><td>Makes one or more declarations on the amqp channel.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Equivalent to <a href="kyu_publisher.md#publish-2"><tt>kyu_publisher:publish(Publisher, Message)</tt></a>.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-2">declare/2</a></td><td>Makes one or more declarations on the amqp channel.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Equivalent to <a href="kyu_publisher.md#publish-2"><tt>kyu_publisher:publish(Publisher, Message)</tt></a>.</td></tr></table>
 
 
 <a name="functions"></a>
 
 ## Function Details ##
 
-<a name="declare-3"></a>
+<a name="declare-2"></a>
 
-### declare/3 ###
+### declare/2 ###
 
 <pre><code>
-declare(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Channel::pid(), Command::list() | tuple()) -&gt; term()
+declare(Channel::<a href="kyu_channel.md#type-name">kyu_channel:name()</a>, Command::list() | tuple()) -&gt; ok
 </code></pre>
 <br />
 
