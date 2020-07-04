@@ -106,9 +106,10 @@ init(Connection, #{channel := Channel} = Opts, Modules) ->
     {ok, flags(Specs)};
 init(Connection, Opts, Modules) ->
     ok = check_opts(Opts),
+    Channel = erlang:make_ref(),
     Specs = lists:foldl(fun (Module, Acc) ->
-        Acc ++ [Module:child_spec(Connection, Opts#{channel => maps:get(name, Opts)})]
-    end, [kyu_channel:child_spec(Connection, Opts)], Modules),
+        Acc ++ [Module:child_spec(Connection, Opts#{channel => Channel})]
+    end, [kyu_channel:child_spec(Connection, #{name => Channel})], Modules),
     {ok, flags(Specs)}.
 
 %% @hidden
