@@ -205,7 +205,7 @@ handle_info(Info, #state{module = Module, args = Args} = State) ->
 
 %% @hidden
 terminate(_, #state{name = Name, unacked = Unacked}) ->
-    lists:foldl(fun (Tag, ok) ->
+    lists:foldl(fun (Tag, _) ->
         kyu_wrangler:cast(Name, {reject, Tag})
     end, ok, Unacked).
 

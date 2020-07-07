@@ -14,4 +14,4 @@ start_link(Connections) ->
 
 init(Connections) ->
     Specs = lists:map(fun kyu_connection:child_spec/1, Connections),
-    {ok, {{one_for_one, 5, 3600}, Specs}}.
+    {ok, {{one_for_one, 10, 3600}, Specs}}.

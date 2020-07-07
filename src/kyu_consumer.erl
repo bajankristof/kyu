@@ -13,7 +13,8 @@
     channel/1,
     queue/1,
     await/1,
-    await/2
+    await/2,
+    stop/1
 ]).
 
 -export([init/1]).
@@ -85,32 +86,39 @@ await(Name) ->
 await(Name, Timeout) ->
     kyu_wrangler:await(Name, Timeout).
 
+%% @doc Gracefully stops the consumer.
+-spec stop(Name :: name()) -> ok.
+stop(Name) ->
+    gen_server:stop(?via(consumer, Name)).
+
 %% CALLBACK FUNCTIONS
 
 %% @hidden
-init({Connection, #{duplex := true} = Opts}) ->
-    Modules = [kyu_wrangler, kyu_worker, kyu_publisher],
-    init(Connection, maps:without([id], Opts), Modules);
+init({Connection, #{id := _} = Opts}) ->
+    init({Connection, maps:without([id], Opts)});
+init({Connection, #{channel := _} = Opts}) ->
+    init(Connection, Opts, []);
 init({Connection, Opts}) ->
-    Modules = [kyu_wrangler, kyu_worker],
-    init(Connection, maps:without([id], Opts), Modules).
+    Channel = erlang:make_ref(),
+    Specs = [kyu_channel:child_spec(Connection, #{name => Channel})],
+    init(Connection, Opts#{channel => Channel}, Specs).
 
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-init(Connection, #{channel := Channel} = Opts, Modules) ->
+init(Connection, #{duplex := true} = Opts, Specs) ->
     ok = check_opts(Opts),
-    Specs = lists:map(fun (Module) ->
-        Module:child_spec(Connection, Opts#{channel => Channel})
-    end, Modules),
-    {ok, flags(Specs)};
-init(Connection, Opts, Modules) ->
+    {ok, flags(Specs ++ [
+        kyu_wrangler:child_spec(Connection, Opts),
+        kyu_worker:child_spec(Connection, Opts),
+        kyu_publisher:child_spec(Connection, maps:without([commands], Opts))
+    ])};
+init(Connection, Opts, Specs) ->
     ok = check_opts(Opts),
-    Channel = erlang:make_ref(),
-    Specs = lists:foldl(fun (Module, Acc) ->
-        Acc ++ [Module:child_spec(Connection, Opts#{channel => Channel})]
-    end, [kyu_channel:child_spec(Connection, #{name => Channel})], Modules),
-    {ok, flags(Specs)}.
+    {ok, flags(Specs ++ [
+        kyu_wrangler:child_spec(Connection, Opts),
+        kyu_worker:child_spec(Connection, Opts)
+    ])}.
 
 %% @hidden
-flags(Specs) -> {{one_for_one, 5, 3600}, Specs}.
+flags(Specs) -> {{rest_for_one, 5, 3600}, Specs}.
