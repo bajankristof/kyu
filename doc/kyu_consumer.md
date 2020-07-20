@@ -32,7 +32,7 @@ name() = term()
 
 
 <pre><code>
-opts() = #{name =&gt; <a href="#type-name">name()</a>, queue =&gt; binary(), worker_module =&gt; atom(), worker_state =&gt; map(), worker_count =&gt; integer(), prefetch_count =&gt; integer(), commands =&gt; list()}
+opts() = #{id =&gt; <a href="supervisor.md#type-child_id">supervisor:child_id()</a>, name =&gt; <a href="#type-name">name()</a>, queue =&gt; binary(), worker_module =&gt; atom(), worker_state =&gt; map(), worker_count =&gt; integer(), prefetch_count =&gt; integer(), commands =&gt; list(), duplex =&gt; boolean(), channel =&gt; <a href="kyu_channel.md#type-name">kyu_channel:name()</a>}
 </code></pre>
 
 <a name="index"></a>
@@ -40,7 +40,7 @@ opts() = #{name =&gt; <a href="#type-name">name()</a>, queue =&gt; binary(), wor
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_consumer.md#await-2"><tt>kyu_consumer:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the consumer to successfully consume it's queue.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Returns the underlying amqp channel.</td></tr><tr><td valign="top"><a href="#check_opts-1">check_opts/1</a></td><td>Checks the validity of the provided consumer options.</td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td>Returns a consumer child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the name of the consumer's connection server.</td></tr><tr><td valign="top"><a href="#queue-1">queue/1</a></td><td>Returns the name of the consumer's queue.</td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td>Starts a consumer.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the consumer.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#await-1">await/1</a></td><td>Equivalent to <a href="kyu_consumer.md#await-2"><tt>kyu_consumer:await(Name, 60000)</tt></a>.</td></tr><tr><td valign="top"><a href="#await-2">await/2</a></td><td>Waits for the consumer to successfully consume its queue.</td></tr><tr><td valign="top"><a href="#channel-1">channel/1</a></td><td>Returns the name of the consumer's channel.</td></tr><tr><td valign="top"><a href="#check_opts-1">check_opts/1</a></td><td>Checks the validity of the provided consumer options.</td></tr><tr><td valign="top"><a href="#child_spec-2">child_spec/2</a></td><td>Returns a consumer child spec.</td></tr><tr><td valign="top"><a href="#connection-1">connection/1</a></td><td>Returns the name of the consumer's connection.</td></tr><tr><td valign="top"><a href="#queue-1">queue/1</a></td><td>Returns the name of the consumer's queue.</td></tr><tr><td valign="top"><a href="#start_link-2">start_link/2</a></td><td>Starts a consumer.</td></tr><tr><td valign="top"><a href="#stop-1">stop/1</a></td><td>Gracefully stops the consumer.</td></tr><tr><td valign="top"><a href="#where-1">where/1</a></td><td>Returns the pid of the consumer.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -67,18 +67,18 @@ await(Name::<a href="#type-name">name()</a>, Timeout::timeout()) -&gt; ok
 </code></pre>
 <br />
 
-Waits for the consumer to successfully consume it's queue.
+Waits for the consumer to successfully consume its queue.
 
 <a name="channel-1"></a>
 
 ### channel/1 ###
 
 <pre><code>
-channel(Name::<a href="#type-name">name()</a>) -&gt; pid() | undefined
+channel(Name::<a href="#type-name">name()</a>) -&gt; <a href="kyu_channel.md#type-name">kyu_channel:name()</a>
 </code></pre>
 <br />
 
-Returns the underlying amqp channel.
+Returns the name of the consumer's channel.
 
 <a name="check_opts-1"></a>
 
@@ -109,11 +109,11 @@ Returns a consumer child spec.
 ### connection/1 ###
 
 <pre><code>
-connection(Name::<a href="#type-name">name()</a>) -&gt; term()
+connection(Name::<a href="#type-name">name()</a>) -&gt; <a href="kyu_connection.md#type-name">kyu_connection:name()</a>
 </code></pre>
 <br />
 
-Returns the name of the consumer's connection server.
+Returns the name of the consumer's connection.
 
 <a name="queue-1"></a>
 
@@ -136,6 +136,17 @@ start_link(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name
 <br />
 
 Starts a consumer.
+
+<a name="stop-1"></a>
+
+### stop/1 ###
+
+<pre><code>
+stop(Name::<a href="#type-name">name()</a>) -&gt; ok
+</code></pre>
+<br />
+
+Gracefully stops the consumer.
 
 <a name="where-1"></a>
 

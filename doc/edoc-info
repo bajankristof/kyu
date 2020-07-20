@@ -1,4 +1,4 @@
 %% encoding: UTF-8
 {application,kyu}.
-{modules,[kyu,kyu_connection,kyu_consumer,kyu_management,kyu_publisher,
-          kyu_worker]}.
+{modules,[kyu,kyu_channel,kyu_connection,kyu_consumer,kyu_management,
+          kyu_publisher,kyu_worker]}.

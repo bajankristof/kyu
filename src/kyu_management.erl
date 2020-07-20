@@ -12,7 +12,7 @@
     get_headers/1,
     request/3,
     request/4,
-    declare/3
+    declare/2
 ]).
 
 -include("amqp.hrl").
@@ -119,24 +119,25 @@ request(Method, Connection, Route, Body) ->
     end.
 
 %% @hidden
--spec declare(Connection :: kyu_connection:name(), Channel :: pid(), Command :: tuple()) -> ok.
-declare(Connection, Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
-    kyu:declare(Connection, Channel, #'queue.bind'{
+-spec declare(Channel :: kyu_channel:name(), Command :: tuple()) -> ok.
+declare(Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
+    kyu:declare(Channel, #'queue.bind'{
         routing_key = Command#'kyu.queue.bind'.routing_key,
         exchange = Command#'kyu.queue.bind'.exchange,
         queue = Command#'kyu.queue.bind'.queue,
         arguments = Command#'kyu.queue.bind'.arguments
     });
-declare(Connection, Channel, #'kyu.queue.bind'{exclusive = true} = Command) ->
+declare(Channel, #'kyu.queue.bind'{exclusive = true} = Command) ->
     Key = Command#'kyu.queue.bind'.routing_key,
-    declare(Connection, Channel, #'kyu.queue.unbind'{
+    declare(Channel, #'kyu.queue.unbind'{
         except = Key,
         exchange = Command#'kyu.queue.bind'.exchange,
         queue = Command#'kyu.queue.bind'.queue,
         arguments = Command#'kyu.queue.bind'.arguments
     }),
-    declare(Connection, Channel, Command#'kyu.queue.bind'{exclusive = false});
-declare(Connection, Channel, #'kyu.queue.unbind'{} = Command) ->
+    declare(Channel, Command#'kyu.queue.bind'{exclusive = false});
+declare(Channel, #'kyu.queue.unbind'{} = Command) ->
+    Connection = kyu_channel:connection(Channel),
     {ok, Bindings} = get_queue_bindings(
         Connection,
         Command#'kyu.queue.unbind'.queue,
@@ -145,7 +146,7 @@ declare(Connection, Channel, #'kyu.queue.unbind'{} = Command) ->
     lists:map(fun (Binding) ->
         case match(Binding, Command) of
             match ->
-                kyu:declare(Connection, Channel, #'queue.unbind'{
+                kyu:declare(Channel, #'queue.unbind'{
                     routing_key = maps:get(<<"routing_key">>, Binding),
                     exchange = Command#'kyu.queue.unbind'.exchange,
                     queue = Command#'kyu.queue.unbind'.queue,
@@ -157,6 +158,7 @@ declare(Connection, Channel, #'kyu.queue.unbind'{} = Command) ->
 
 %% PRIVATE FUNCTIONS
 
+%% @hidden
 match(_, #'kyu.queue.unbind'{except = <<>>, pattern = <<>>}) -> nomatch;
 match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{except = <<>>} = Command) ->
     Regex = Command#'kyu.queue.unbind'.pattern,

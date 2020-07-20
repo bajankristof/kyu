@@ -1,5 +1,5 @@
 %% @doc This module is responsible for creating
-%% and maintaining amqp connections and channels.
+%% and maintaining amqp connections.
 -module(kyu_connection).
 
 -behaviour(gen_server).
@@ -11,10 +11,12 @@
     call/3,
     cast/2,
     where/1,
-    connection/1,
-    channel/1,
+    pid/1,
+    status/1,
     network/1,
+    option/2,
     option/3,
+    apply/3,
     await/1,
     await/2,
     subscribe/1,
@@ -71,76 +73,90 @@
 
 %% API FUNCTIONS
 
-%% @doc Returns a connection server child spec.
+%% @doc Returns a connection child spec.
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
 child_spec(#{id := _} = Opts) ->
     #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Opts]}};
 child_spec(#{name := Name} = Opts) ->
     child_spec(Opts#{id => ?name(connection, Name)}).
 
-%% @doc Starts a connection server.
+%% @doc Starts a connection.
 -spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
 start_link(#{name := Name} = Opts) ->
     gen_server:start_link(?via(connection, Name), ?MODULE, Opts, []).
 
-%% @doc Makes a gen_server:call/2 to the connection server.
+%% @doc Makes a gen_server:call/2 to the connection.
 -spec call(Name :: name(), Request :: term()) -> term().
 call(Name, Request) ->
     gen_server:call(?via(connection, Name), Request).
 
-%% @doc Makes a gen_server:call/3 to the connection server.
+%% @doc Makes a gen_server:call/3 to the connection.
 -spec call(Name :: name(), Request :: term(), Timeout :: timeout()) -> term().
 call(Name, Request, Timeout) ->
     gen_server:call(?via(connection, Name), Request, Timeout).
 
-%% @doc Makes a gen_server:cast/2 to the connection server.
+%% @doc Makes a gen_server:cast/2 to the connection.
 -spec cast(Name :: name(), Request :: term()) -> ok.
 cast(Name, Request) ->
     gen_server:cast(?via(connection, Name), Request).
 
-%% @doc Returns the pid of the connection server.
+%% @doc Returns the pid of the connection.
 %% -spec where(Name :: name()) -> pid() | undefined.
 where(Name) ->
     gproc:where(?server(connection, Name)).
 
-%% @doc Returns the underlying amqp connection.
--spec connection(Name :: name()) -> pid() | undefined.
-connection(Name) ->
-    call(Name, connection).
+%% @doc Returns the pid of the underlying amqp connection.
+-spec pid(Name :: name()) -> pid() | undefined.
+pid(Name) ->
+    call(Name, pid).
 
-%% @doc Opens an amqp channel.
--spec channel(Name :: name()) -> {ok, pid()} | {error, term()}.
-channel(Name) ->
-    call(Name, channel).
+%% @doc Returns the up atom if the process is running and has an active connection.
+-spec status(Name :: name()) -> up | down.
+status(Name) ->
+    case catch call(Name, status) of
+        {'EXIT', {noproc, _}} -> down;
+        Status -> Status
+    end.
 
-%% @doc Returns the connection server's network params.
+%% @doc Returns the connection's network params.
 -spec network(Name :: name()) -> #amqp_params_network{}.
 network(Name) ->
     call(Name, network).
 
-%% @doc Returns a value from the connection server's options.
+%% @equiv kyu_connection:option(Name, Key, undefined)
+-spec option(Name :: name(), Key :: atom()) -> term().
+option(Name, Key) ->
+    option(Name, Key, undefined).
+
+%% @doc Returns a value from the connection's options.
 -spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
 option(Name, Key, Value) ->
     call(Name, {option, Key, Value}).
+
+%% @doc Calls a function on the underlying amqp connection.
+-spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
+apply(Name, Function, Args) ->
+    Connection = pid(Name),
+    erlang:apply(amqp_connection, Function, [Connection] ++ Args).
 
 %% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
 await(Name) ->
     await(Name, ?DEFAULT_TIMEOUT).
 
-%% @doc Waits for the connection server to successfully connect.
+%% @doc Waits for the connection to successfully connect.
 -spec await(Name :: name(), Timeout :: timeout()) -> ok.
 await(Name, Timeout) ->
     Server = ?server(connection, Name),
     Leftover = kyu_waitress:await(Server, Timeout),
     call(Name, await, Leftover).
 
-%% @doc Subscribes the calling process to events from the connection server.
+%% @doc Subscribes the calling process to events from the connection.
 -spec subscribe(Name :: name()) -> ok.
 subscribe(Name) ->
     gproc:reg({p, l, ?event(connection, Name)}).
 
-%% @doc Stops the connection server.
+%% @doc Gracefully closes the connection.
 -spec stop(Name :: name()) -> ok.
 stop(Name) ->
     gen_server:stop(?via(connection, Name)).
@@ -155,15 +171,15 @@ init(#{name := Name} = Opts) ->
         name = Name,
         opts = Opts,
         network = kyu_network:from(Opts)
-    }, {continue, connect}}.
+    }, {continue, init}}.
 
 %% @hidden
-handle_call(connection, _, #state{connection = Connection} = State) ->
+handle_call(pid, _, #state{connection = Connection} = State) ->
     {reply, Connection, State};
-handle_call(channel, _, #state{connection = undefined} = State) ->
-    {reply, ?ERROR_NO_CONNECTION, State};
-handle_call(channel, _, #state{connection = Connection} = State) ->
-    {reply, amqp_connection:open_channel(Connection), State};
+handle_call(status, _, #state{connection = undefined} = State) ->
+    {reply, down, State};
+handle_call(status, _, #state{connection = _} = State) ->
+    {reply, up, State};
 handle_call(network, _, #state{network = Network} = State) ->
     {reply, Network, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
@@ -181,9 +197,8 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 %% @hidden
-handle_continue(connect, #state{
+handle_continue(init, #state{
     connection = undefined,
-    name = Name,
     opts = Opts,
     network = Network,
     attempts = Attempts
@@ -193,45 +208,46 @@ handle_continue(connect, #state{
     case {amqp_connection:start(Network), Attempts} of
         {{ok, Connection}, _} ->
             lager:info("Kyu connection server connection up"),
-            gproc:send({p, l, ?event(connection, Name)}, ?message(connection, Name, up)),
             Monitor = erlang:monitor(process, Connection),
-            handle_connection(State#state{connection = Connection, monitor = Monitor, attempts = 1});
-        {{error, Reason}, Max} ->
-            Meta = [{reason, Reason}, {attempts, Attempts}],
-            lager:info(Meta, "Kyu connection server reached max attempts"),
-            {stop, Reason, State};
-        {{error, Reason}, _} ->
-            Meta = [{reason, Reason}, {attempts, Attempts}],
-            lager:warning(Meta, "Kyu connection server connection failed"),
-            handle_failure(State#state{attempts = Attempts + 1})
+            {noreply, State#state{
+                connection = Connection,
+                monitor = Monitor,
+                attempts = 1
+            }, {continue, {init, fin}}};
+        {{error, Error}, Max} ->
+            lager:info([{error, Error}], "Kyu connection server reached max attempts"),
+            {stop, Error, State};
+        {{error, Error}, _} ->
+            lager:warning([{error, Error}], "Kyu connection server connection failed"),
+            {noreply, State#state{
+                attempts = Attempts + 1
+            }, {continue, retry}}
     end;
+handle_continue({init, fin}, #state{name = Name} = State) ->
+    Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
+    kyu_waitress:deliver(?event(connection, Name), Callback),
+    gproc:send({p, l, ?event(connection, Name)}, ?message(connection, Name, up)),
+    {noreply, State};
+handle_continue(retry, #state{opts = Opts} = State) ->
+    Sleep = maps:get(retry_sleep, Opts, ?DEFAULT_RETRY_SLEEP),
+    lager:debug("Kyu connection server retrying in ~ps", [Sleep div 1000]),
+    erlang:send_after(Sleep, self(), init),
+    {noreply, State};
 handle_continue(_, State) ->
     {noreply, State}.
 
 %% @hidden
-handle_info(connect, #state{connection = undefined} = State) ->
-    {noreply, State, {continue, connect}};
-handle_info({'DOWN', Monitor, _, _, Reason}, #state{name = Name, monitor = Monitor} = State) ->
+handle_info(init, #state{connection = undefined} = State) ->
+    {noreply, State, {continue, init}};
+handle_info({'DOWN', Monitor, _, _, Info}, #state{name = Name, monitor = Monitor} = State) ->
     gproc:send({p, l, ?event(connection, Name)}, ?message(connection, Name, down)),
-    lager:notice([{reason, Reason}], "Kyu connection server connection down"),
-    {noreply, State#state{connection = undefined, monitor = undefined}, {continue, connect}};
-handle_info(_, State) ->
+    lager:notice("Kyu connection server connection down~n~p", [Info]),
+    {noreply, State#state{connection = undefined, monitor = undefined}, {continue, init}};
+handle_info(Info, State) ->
+    lager:warning("Kyu connection server received unrecognizable info~n~p", [Info]),
     {noreply, State}.
 
 %% @hidden
 terminate(_, #state{connection = undefined}) -> ok;
 terminate(_, #state{connection = Connection}) ->
     amqp_connection:close(Connection).
-
-%% PRIVATE FUNCTIONS
-
-handle_connection(#state{name = Name} = State) ->
-    Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
-    kyu_waitress:deliver(?event(connection, Name), Callback),
-    {noreply, State}.
-
-handle_failure(#state{opts = Opts} = State) ->
-    Sleep = maps:get(retry_sleep, Opts, ?DEFAULT_RETRY_SLEEP),
-    lager:debug("Kyu connection server retrying in ~ps", [Sleep div 1000]),
-    erlang:send_after(Sleep, self(), connect),
-    {noreply, State}.
