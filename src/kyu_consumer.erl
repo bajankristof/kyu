@@ -30,8 +30,8 @@
     worker_state := map(),
     worker_count := integer(),
     prefetch_count := integer(),
-    duplex := boolean(),
     commands := list(),
+    duplex := boolean(),
     channel := kyu_channel:name()
 }.
 -export_type([name/0, opts/0]).

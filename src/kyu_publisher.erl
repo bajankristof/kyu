@@ -18,8 +18,7 @@
     publish/2,
     await/1,
     await/2,
-    stop/1,
-    tag/0
+    stop/1
 ]).
 
 -export([
@@ -144,10 +143,6 @@ await(Name, Timeout) ->
 stop(Name) ->
     gen_server:stop(?via(publisher, Name)).
 
-%% @hidden
--spec tag() -> binary().
-tag() -> base64:encode(erlang:term_to_binary(erlang:make_ref())).
-
 %% CALLBACK FUNCTIONS
 
 %% @hidden
@@ -227,6 +222,8 @@ handle_info(#'basic.nack'{delivery_tag = Seq}, State) ->
     {noreply, State, {continue, {reply, Seq, ?ERROR_NOT_CONFIRMED}}};
 handle_info(#'basic.ack'{delivery_tag = Seq}, State) ->
     {noreply, State, {continue, {reply, Seq, ok}}};
+handle_info(?message(channel, Channel, up), #state{channel = Channel, status = up} = State) ->
+    {noreply, State};
 handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
     Monitor = erlang:monitor(process, kyu_channel:pid(Channel)),
     ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
@@ -260,19 +257,19 @@ handle_publish(#publish{execution = sync} = Command, Caller, #state{channel = Ch
     ok = kyu_channel:apply(Channel, call, make_args(Command, State)),
     {noreply, State#state{tags = Tags#{Seq => Caller}}};
 handle_publish(#publish{execution = supervised} = Command, Caller, #state{channel = Channel, tags = Tags} = State) ->
-    Tag = tag(),
-    Supervised = make_supervised(Command, Tag),
+    Id = kyu_uuid:new(),
+    Supervised = make_supervised(Command, Id),
     Seq = kyu_channel:apply(Channel, next_publish_seqno, []),
     ok = kyu_channel:apply(Channel, call, make_args(Supervised, State)),
-    {noreply, State#state{tags = Tags#{Tag => Caller, Seq => Caller}}}.
+    {noreply, State#state{tags = Tags#{Id => Caller, Seq => Caller}}}.
 
 %% @hidden
 make_args(#publish{command = Command, props = Props, payload = Payload}, _) ->
     [Command, #amqp_msg{props = Props, payload = Payload}].
 
 %% @hidden
-make_supervised(#publish{props = Props} = Command, Key) ->
-    Command#publish{props = Props#'P_basic'{message_id = Key}}.
+make_supervised(#publish{props = Props} = Command, Id) ->
+    Command#publish{props = Props#'P_basic'{message_id = Id}}.
 
 %% @hidden
 make_command(Message) ->

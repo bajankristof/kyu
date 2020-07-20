@@ -190,6 +190,8 @@ handle_info({#'basic.deliver'{} = Command, Content}, #state{name = Name} = State
     #'basic.deliver'{delivery_tag = Tag, routing_key = Key} = Command,
     ok = kyu_worker:message(Name, {message, Tag, Key, Content}),
     {noreply, State};
+handle_info(?message(channel, Channel, up), #state{channel = Channel, status = up} = State) ->
+    {noreply, State};
 handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
     Monitor = erlang:monitor(process, kyu_channel:pid(Channel)),
     ok = kyu:declare(Channel, maps:get(commands, Opts, [])),

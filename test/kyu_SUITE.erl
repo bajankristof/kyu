@@ -50,7 +50,10 @@ groups() -> [
         can_publish_sync,
         can_publish_supervised,
         can_consumer_survive,
-        can_consumer_recover
+        can_ack_message,
+        can_reject_message,
+        can_recover_badmatch,
+        can_publish_duplex
     ]}
 ].
 
@@ -267,4 +270,82 @@ can_consumer_survive(Config) ->
     ?assertNotEqual(Old, New),
     ok = kyu_consumer:stop(Case).
 
-can_consumer_recover(_) -> ok.
+can_ack_message(Config) ->
+    Case = ?config('case.binary', Config),
+    {ok, _} = kyu_consumer:start_link(?CONNECTION, #{
+        name => Case,
+        queue => Case,
+        worker_module => kyu_SUITE_worker,
+        worker_state => [self(), ack],
+        commands => [#'queue.declare'{queue = Case}]
+    }),
+    {ok, _} = kyu_publisher:start_link(?CONNECTION, #{name => Case}),
+    ok = kyu_consumer:await(Case),
+    ok = kyu_publisher:await(Case),
+    ok = kyu:publish(Case, #{routing_key => Case}),
+    receive
+        #{routing_key := Case} ->
+            ok = kyu_consumer:stop(Case),
+            ok = kyu_publisher:stop(Case)
+    end.
+
+can_reject_message(Config) ->
+    Case = ?config('case.binary', Config),
+    {ok, _} = kyu_consumer:start_link(?CONNECTION, #{
+        name => Case,
+        queue => Case,
+        worker_module => kyu_SUITE_worker,
+        worker_state => [self(), reject],
+        commands => [#'queue.declare'{queue = Case}]
+    }),
+    {ok, _} = kyu_publisher:start_link(?CONNECTION, #{name => Case}),
+    ok = kyu_consumer:await(Case),
+    ok = kyu_publisher:await(Case),
+    ok = kyu:publish(Case, #{routing_key => Case}),
+    receive
+        #{routing_key := Case} ->
+            receive
+                #{routing_key := Case} ->
+                    ok = kyu_consumer:stop(Case),
+                    ok = kyu_publisher:stop(Case)
+            end
+    end.
+
+can_recover_badmatch(Config) ->
+    Case = ?config('case.binary', Config),
+    {ok, _} = kyu_consumer:start_link(?CONNECTION, #{
+        name => Case,
+        queue => Case,
+        worker_module => kyu_SUITE_worker,
+        worker_state => [self(), badmatch],
+        commands => [#'queue.declare'{queue = Case}]
+    }),
+    {ok, _} = kyu_publisher:start_link(?CONNECTION, #{name => Case}),
+    ok = kyu_consumer:await(Case),
+    ok = kyu_publisher:await(Case),
+    ok = kyu:publish(Case, #{routing_key => Case}),
+    receive
+        #{routing_key := Case} ->
+            receive
+                #{routing_key := Case} ->
+                    ok = kyu_consumer:stop(Case),
+                    ok = kyu_publisher:stop(Case)
+            end
+    end.
+
+can_publish_duplex(Config) ->
+    Case = ?config('case.binary', Config),
+    {ok, _} = kyu_consumer:start_link(?CONNECTION, #{
+        name => Case,
+        queue => Case,
+        worker_module => kyu_SUITE_worker,
+        worker_state => [self(), reject],
+        commands => [#'queue.declare'{queue = Case}],
+        duplex => true
+    }),
+    ok = kyu_consumer:await(Case),
+    ok = kyu:publish(Case, #{routing_key => Case}),
+    receive
+        #{routing_key := Case} ->
+            ok = kyu_consumer:stop(Case)
+    end.
