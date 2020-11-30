@@ -49,7 +49,9 @@
     {ack, term()} | {reject, term()} | {remove, term()} | {stop, term(), term()}.
 -callback handle_info(Info :: term(), State :: term()) ->
     {noreply, term()} | {stop, term(), term()}.
--optional_callbacks([init/1, handle_info/2]).
+-callback terminate(Reason :: term(), State :: term()) ->
+    ok | {error, term()}.
+-optional_callbacks([init/1, handle_info/2, terminate/2]).
 
 %% @hidden
 -spec child_spec(
@@ -160,9 +162,9 @@ init({Connection, #{name := Name} = Opts}) ->
         opts = Opts, module = maps:get(worker_module, Opts),
         args = maps:get(worker_state, Opts)},
     case call_optional(State#state.module, {init, 1}, [State#state.args]) of
-        {ok, Args} -> {ok, State#state{args = Args}};
-        {stop, Stop} -> {stop, Stop};
-        undefined -> {ok, State}
+        {true, {ok, Args}} -> {ok, State#state{args = Args}};
+        {true, {stop, Stop}} -> {stop, Stop};
+        false -> {ok, State}
     end.
 
 %% @hidden
@@ -198,16 +200,17 @@ handle_continue(_, State) ->
 %% @hidden
 handle_info(Info, #state{module = Module, args = Args} = State) ->
     case call_optional(Module, {handle_info, 2}, [Info, Args]) of
-        {noreply, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
-        {stop, _, _} = Return -> {noreply, State, {continue, {noreply, Return}}};
-        undefined -> {noreply, State}
+        {true, {noreply, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
+        {true, {stop, _, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
+        false -> {noreply, State}
     end.
 
 %% @hidden
-terminate(_, #state{name = Name, unacked = Unacked}) ->
-    lists:foldl(fun (Tag, _) ->
-        kyu_wrangler:cast(Name, {reject, Tag})
-    end, ok, Unacked).
+terminate(Reason, #state{module = Module, args = Args} = State) ->
+    case call_optional(Module, {terminate, 2}, [Reason, Args]) of
+        {true, Return} -> reject_all(State), Return;
+        false -> reject_all(State)
+    end.
 
 %% PRIVATE FUNCTIONS
 
@@ -215,8 +218,8 @@ terminate(_, #state{name = Name, unacked = Unacked}) ->
 call_optional(Module, {Function, Arity}, Args) ->
     Functions = erlang:apply(Module, module_info, [exports]),
     case lists:member({Function, Arity}, Functions) of
-        true -> erlang:apply(Module, Function, Args);
-        false -> undefined
+        true -> {true, erlang:apply(Module, Function, Args)};
+        false -> false
     end.
 
 %% @hidden
@@ -226,3 +229,9 @@ make_pool(_, #{name := Name} = Opts) ->
     Overflow = Count * Prefetch - Count,
     [{size, Count}, {max_overflow, Overflow},
         {name, ?via(worker, Name)}, {worker_module, ?MODULE}].
+
+%% @hidden
+reject_all(#state{name = Name, unacked = Unacked}) ->
+    lists:foldl(fun (Tag, _) ->
+        kyu_wrangler:cast(Name, {reject, Tag})
+    end, ok, Unacked).
