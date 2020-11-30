@@ -162,6 +162,9 @@ handle_message(Message, State) ->
 %% this callback is optional and works like gen_server:handle_info/2
 handle_info(_Info, State) ->
     {noreply, State}.
+
+%% this callback is optional and works like gen_server:terminate/2
+terminate(_Reason, _State) -> ok.
 ```
 
  - `ack` - (as you would expect) acks the message
