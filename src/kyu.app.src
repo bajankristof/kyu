@@ -1,6 +1,6 @@
 {application, kyu,
  [{description, "Simplified Erlang AMQP client"},
-  {vsn, "1.1.0"},
+  {vsn, "1.2.0"},
   {registered, []},
   {mod, {kyu_app, []}},
   {applications,
@@ -8,16 +8,10 @@
     stdlib,
     inets,
     gproc,
-    lager,
     poolboy,
     amqp_client,
     jsx
    ]},
-  {env,[
-    {connections, [
-      #{name => localhost}
-    ]}
-  ]},
   {modules, []},
 
   {licenses, ["Apache 2.0"]},

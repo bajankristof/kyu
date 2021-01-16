@@ -139,8 +139,6 @@ stop(Name) ->
 
 %% @hidden
 init({Connection, #{name := Name} = Opts}) ->
-    lager:md([{channel, Name}]),
-    % lager:debug("Kyu channel process started"),
     kyu_connection:subscribe(Connection),
     {ok, #state{
         name = Name,
@@ -204,8 +202,7 @@ handle_info(?message(connection, Connection, up), #state{connection = Connection
     {noreply, State, {continue, init}};
 handle_info(?message(connection, Connection, down), #state{connection = Connection} = State) ->
     {noreply, State};
-handle_info(Info, State) ->
-    lager:warning("Kyu channel received unrecognizable info~n~p", [Info]),
+handle_info(_, State) ->
     {noreply, State}.
 
 %% @hidden

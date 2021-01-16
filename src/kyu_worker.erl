@@ -157,11 +157,10 @@ start_link({Connection, Opts}) ->
 
 %% @hidden
 init({Connection, #{name := Name} = Opts}) ->
-    % lager:debug([{worker, Name}], "Kyu worker process started"),
     State = #state{connection = Connection, name = Name,
         opts = Opts, module = maps:get(worker_module, Opts),
         args = maps:get(worker_state, Opts)},
-    case call_optional(State#state.module, {init, 1}, [State#state.args]) of
+    case call_optional(State#state.module, init, [State#state.args]) of
         {true, {ok, Args}} -> {ok, State#state{args = Args}};
         {true, {stop, Stop}} -> {stop, Stop};
         false -> {ok, State}
@@ -199,7 +198,7 @@ handle_continue(_, State) ->
 
 %% @hidden
 handle_info(Info, #state{module = Module, args = Args} = State) ->
-    case call_optional(Module, {handle_info, 2}, [Info, Args]) of
+    case call_optional(Module, handle_info, [Info, Args]) of
         {true, {noreply, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
         {true, {stop, _, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
         false -> {noreply, State}
@@ -207,7 +206,7 @@ handle_info(Info, #state{module = Module, args = Args} = State) ->
 
 %% @hidden
 terminate(Reason, #state{module = Module, args = Args} = State) ->
-    case call_optional(Module, {terminate, 2}, [Reason, Args]) of
+    case call_optional(Module, terminate, [Reason, Args]) of
         {true, Return} -> reject_all(State), Return;
         false -> reject_all(State)
     end.
@@ -215,9 +214,10 @@ terminate(Reason, #state{module = Module, args = Args} = State) ->
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-call_optional(Module, {Function, Arity}, Args) ->
-    Functions = erlang:apply(Module, module_info, [exports]),
-    case lists:member({Function, Arity}, Functions) of
+call_optional(Module, Function, Args) ->
+    Arity = erlang:length(Args),
+    Exports = erlang:apply(Module, module_info, [exports]),
+    case lists:member({Function, Arity}, Exports) of
         true -> {true, erlang:apply(Module, Function, Args)};
         false -> false
     end.

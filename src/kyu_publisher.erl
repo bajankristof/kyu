@@ -147,8 +147,6 @@ stop(Name) ->
 
 %% @hidden
 init({Connection, #{name := Name} = Opts}) ->
-    lager:md([{publisher, Name}]),
-    % lager:debug("Kyu publisher process started"),
     {ok, #state{
         name = Name,
         connection = Connection,
@@ -233,8 +231,7 @@ handle_info(?message(channel, Channel, down), #state{channel = Channel} = State)
     {noreply, State#state{status = down}};
 handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
     {noreply, State#state{status = down}};
-handle_info(Info, State) ->
-    lager:warning("Kyu publisher received unrecognizable info~n~p", [Info]),
+handle_info(_, State) ->
     {noreply, State}.
 
 %% @hidden
