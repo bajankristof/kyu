@@ -113,7 +113,7 @@ option(Name, Key, Value) ->
 -spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
 apply(Name, Function, Args) ->
     Channel = pid(Name),
-    erlang:apply(amqp_channel, Function, [Channel] ++ Args).
+    erlang:apply(amqp_channel, Function, [Channel | Args]).
 
 %% @equiv kyu_channel:await(Name, 60000)
 -spec await(Name :: name()) -> ok.

@@ -134,7 +134,7 @@ get_all(Name) ->
     Children = gen_server:call(?via(worker, Name), get_all_workers),
     lists:foldl(fun
         ({_, Worker, _, _}, Workers) when erlang:is_pid(Worker) ->
-            Workers ++ [Worker];
+            [Worker | Workers];
         (_, Workers) -> Workers
     end, [], Children).
 
@@ -172,7 +172,7 @@ handle_call(_, _, State) ->
 
 %% @hidden
 handle_cast({message, Tag, _, _} = Command, #state{unacked = Unacked} = State) ->
-    {noreply, State#state{unacked = Unacked ++ [Tag]}, {continue, Command}};
+    {noreply, State#state{unacked = [Tag | Unacked]}, {continue, Command}};
 handle_cast(_, State) ->
     {noreply, State}.
 

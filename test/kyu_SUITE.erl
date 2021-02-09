@@ -69,16 +69,16 @@ init_per_group(Group, Config) when (Group =:= command) or (Group =:= management)
     Spec = kyu_channel:child_spec(?CONNECTION, #{id => Group, name => Group}),
     {ok, _} = supervisor:start_child(?SUPERVISOR, Spec#{restart => temporary}),
     ok = kyu_channel:await(Group),
-    [{group, Group}] ++ Config;
+    [{group, Group} | Config];
 init_per_group(Group, Config) ->
-    [{group, Group}] ++ Config.
+    [{group, Group} | Config].
 
 end_per_group(command = Group, _) ->
     ok = supervisor:terminate_child(?SUPERVISOR, Group);
 end_per_group(_, _) -> ok.
 
 init_per_testcase(Case, Config) ->
-    [{'case', Case}, {'case.binary', erlang:atom_to_binary(Case, utf8)}] ++ Config.
+    [{'case', Case}, {'case.binary', erlang:atom_to_binary(Case, utf8)} | Config].
 
 end_per_testcase(_, _Config) -> ok.
 

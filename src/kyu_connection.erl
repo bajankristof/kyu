@@ -137,7 +137,7 @@ option(Name, Key, Value) ->
 -spec apply(Name :: name(), Function :: atom(), Args :: list()) -> term().
 apply(Name, Function, Args) ->
     Connection = pid(Name),
-    erlang:apply(amqp_connection, Function, [Connection] ++ Args).
+    erlang:apply(amqp_connection, Function, [Connection | Args]).
 
 %% @equiv kyu_connection:await(Name, 60000)
 -spec await(Name :: name()) -> ok.
