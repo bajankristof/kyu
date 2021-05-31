@@ -189,9 +189,9 @@ handle_continue({reply, Tag, {Type, Args}}, #state{name = Name, unacked = Unacke
     ok = kyu_wrangler:cast(Name, {Type, Tag}),
     poolboy:checkin(?via(worker, Name), self()),
     {noreply, State#state{args = Args, unacked = lists:delete(Tag, Unacked)}};
-handle_continue({noreply, {_, Args}}, #state{} = State) ->
+handle_continue({noreply, {noreply, Args}}, #state{} = State) ->
     {noreply, State#state{args = Args}};
-handle_continue({_, _, {stop, Stop, Args}}, #state{} = State) ->
+handle_continue({noreply, {stop, Stop, Args}}, #state{} = State) ->
     {stop, Stop, State#state{args = Args}};
 handle_continue(_, State) ->
     {noreply, State}.
@@ -199,8 +199,8 @@ handle_continue(_, State) ->
 %% @hidden
 handle_info(Info, #state{module = Module, args = Args} = State) ->
     case call_optional(Module, handle_info, [Info, Args]) of
-        {true, {noreply, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
-        {true, {stop, _, _}} = Return -> {noreply, State, {continue, {noreply, Return}}};
+        {true, {noreply, _} = Return} -> {noreply, State, {continue, {noreply, Return}}};
+        {true, {stop, _, _} = Return} -> {noreply, State, {continue, {noreply, Return}}};
         false -> {noreply, State}
     end.
 
