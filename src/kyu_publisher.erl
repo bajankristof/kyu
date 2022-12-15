@@ -99,9 +99,10 @@ is_pool(Publisher) when erlang:is_pid(Publisher) ->
     end.
 
 %% @doc Returns the pid of the publisher.
-%% -spec where(Name :: kyu:name()) -> pid() | undefined.
-where(Name) ->
-    gproc:where(?key(publisher, Name)).
+%% -spec where(Ref :: kyu:name()) -> pid() | undefined.
+where(Ref) when not erlang:is_pid(Ref) ->
+    gproc:where(?key(publisher, Ref));
+where(Ref) -> Ref.
 
 %% @doc Makes a gen_server:call/2 to the publisher.
 -spec call(Ref :: pid() | kyu:name(), Request :: term()) -> term().
@@ -150,9 +151,8 @@ publish(Ref, #{} = Message) ->
 
 %% @doc Gracefully stops the publisher.
 -spec stop(Ref :: pid() | kyu:name()) -> ok.
-stop(Ref) when not erlang:is_pid(Ref) ->
-    stop(where(Ref));
-stop(Publisher) ->
+stop(Ref) ->
+    Publisher = where(Ref),
     case is_pool(Publisher) of
         true -> poolboy:stop(Publisher);
         false -> gen_server:stop(Publisher)
@@ -160,9 +160,8 @@ stop(Publisher) ->
 
 %% @hidden
 -spec transaction(Ref :: pid() | kyu:name(), Callback :: fun()) -> term().
-transaction(Ref, Callback) when not erlang:is_pid(Ref) ->
-    transaction(where(Ref), Callback);
-transaction(Publisher, Callback) ->
+transaction(Ref, Callback) ->
+    Publisher = where(Ref),
     case is_pool(Publisher) of
         true -> poolboy:transaction(Publisher, Callback);
         false -> Callback(Publisher)

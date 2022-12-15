@@ -54,25 +54,24 @@ check_opts(#{name := _, connection := _, queue := Queue, module := Module, prefe
     when erlang:is_binary(Queue), erlang:is_atom(Module), erlang:is_integer(PrefetchCount), PrefetchCount > 0 -> ok.
 
 %% @doc Returns the pid of the consumer.
-%% -spec where(Name :: kyu:name()) -> pid() | undefined.
-where(Name) ->
-    gproc:where(?key(consumer, Name)).
+%% -spec where(Ref :: kyu:name()) -> pid() | undefined.
+where(Ref) when not erlang:is_pid(Ref) ->
+    gproc:where(?key(consumer, Ref));
+where(Ref) -> Ref.
 
 %% @doc Returns the pid of the consumer's AMQP channel.
 -spec channel(Ref :: pid() | kyu:name()) -> pid().
-channel(Ref) when not erlang:is_pid(Ref) ->
-    channel(where(Ref));
 channel(Ref) ->
-    {dictionary, Info} = erlang:process_info(Ref, dictionary),
+    Consumer = where(Ref),
+    {dictionary, Info} = erlang:process_info(Consumer, dictionary),
     proplists:get_value('$kyu_channel', Info).
 
 %% @hidden
 -spec stop(Ref :: pid() | kyu:name()) -> ok.
-stop(Ref) when not erlang:is_pid(Ref) ->
-    stop(where(Ref));
 stop(Ref) ->
-    erlang:unlink(Ref),
-    erlang:exit(Ref, shutdown).
+    Consumer = where(Ref),
+    erlang:unlink(Consumer),
+    erlang:exit(Consumer, shutdown).
 
 %% CALLBACK FUNCTIONS
 

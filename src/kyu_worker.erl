@@ -133,9 +133,10 @@ is_pool(Worker) when erlang:is_pid(Worker) ->
     end.
 
 %% @doc Returns the pid of the worker or worker pool.
-%% -spec where(Name :: kyu:name()) -> pid() | undefined.
-where(Name) ->
-    gproc:where(?key(worker, Name)).
+%% -spec where(Ref :: kyu:name()) -> pid() | undefined.
+where(Ref) when not erlang:is_pid(Ref) ->
+    gproc:where(?key(worker, Ref));
+where(Ref) -> Ref.
 
 %% @doc Makes a gen_server:call/2 to the worker or one of the workers.
 -spec call(Ref :: pid() | kyu:name(), Request :: term()) -> term().
@@ -192,33 +193,27 @@ channel() -> erlang:get('$kyu_channel').
 
 %% @doc Returns the pid of the worker's AMQP channel.
 -spec channel(Ref :: pid() | kyu:name()) -> pid().
-channel(Ref) when not erlang:is_pid(Ref) ->
-    channel(where(Ref));
 channel(Ref) ->
-    {dictionary, Info} = erlang:process_info(Ref, dictionary),
+    Worker = where(Ref),
+    {dictionary, Info} = erlang:process_info(Worker, dictionary),
     proplists:get_value('$kyu_channel', Info).
 
 %% @hidden
 -spec get_all(Ref :: pid() | kyu:name()) -> [pid()].
-get_all(Ref) when not erlang:is_pid(Ref) ->
-    get_all(where(Ref));
 get_all(Ref) ->
-    case is_pool(Ref) of
-        true ->
-            Workers = gen_server:call(Ref, get_all_workers),
-            lists:foldl(fun
-                ({_, Pid, _, _}, Acc) when erlang:is_pid(Pid) ->
-                    [Pid | Acc];
-                (_, Acc) -> Acc
-            end, [], Workers);
-        false -> [Ref]
-    end.
+    Worker = where(Ref),
+    true = is_pool(Worker),
+    Pids = gen_server:call(Worker, get_all_workers),
+    lists:foldl(fun
+        ({_, Pid, _, _}, Acc) when erlang:is_pid(Pid) ->
+            [Pid | Acc];
+        (_, Acc) -> Acc
+    end, [], Pids).
 
 %% @hidden
 -spec transaction(Ref :: pid() | kyu:name(), Callback :: fun()) -> term().
-transaction(Ref, Callback) when not erlang:is_pid(Ref) ->
-    transaction(where(Ref), Callback);
-transaction(Worker, Callback) ->
+transaction(Ref, Callback) ->
+    Worker = where(Ref),
     case is_pool(Worker) of
         true -> poolboy:transaction(Worker, Callback);
         false -> Callback(Worker)

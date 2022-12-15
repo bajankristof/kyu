@@ -1,3 +1,4 @@
 -define(name(Type, Name), {kyu, Type, Name}).
 -define(key(Type, Name), {n, l, ?name(Type, Name)}).
 -define(via(Type, Name), {via, gproc, ?key(Type, Name)}).
+-define(where(Ref, Pid), case where(Ref) of Pid when erlang:is_pid(Pid) -> Pid end).
