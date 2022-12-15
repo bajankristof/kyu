@@ -1,6 +1,6 @@
 {application, kyu,
  [{description, "Simplified Erlang AMQP client"},
-  {vsn, "2.0.3"},
+  {vsn, "2.0.4"},
   {registered, []},
   {mod, {kyu_app, []}},
   {applications,
