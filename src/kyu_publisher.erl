@@ -223,7 +223,7 @@ terminate(_, #state{channel = Channel} = State) ->
 %% @hidden
 do_init(Channel, Opts) ->
     erlang:monitor(process, kyu_channel:where(Channel)),
-    ok = kyu:declare(maps:get(commands, Opts, [])),
+    ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
     Confirms = maps:get(confirms, Opts, true),
     State = #state{channel = Channel, confirms = Confirms, opts = Opts},
     {ok, State, {continue, setup}}.
