@@ -99,15 +99,17 @@
 
 %% @doc Returns a worker child spec.
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
-child_spec(#{id := Id} = Opts) ->
+child_spec(#{id := Id, name := _} = Opts) ->
     #{id => Id, start => {?MODULE, start_link, [Opts]}};
 child_spec(#{name := Name} = Opts) ->
     child_spec(Opts#{id => ?name(worker, Name)}).
 
 %% @doc Returns a worker pool child spec.
 -spec child_spec(Opts :: opts(), PoolOpts :: pool_opts()) -> supervisor:child_spec().
-child_spec(#{name := Name} = Opts, #{} = PoolOpts) ->
-    poolboy:child_spec(?name(worker, Name), make_pool_args(Opts, PoolOpts), maps:remove(name, Opts)).
+child_spec(#{id := Id, name := _} = Opts, #{} = PoolOpts) ->
+    poolboy:child_spec(Id, make_pool_args(Opts, PoolOpts), maps:remove(name, Opts));
+child_spec(#{name := Name} = Opts, PoolOpts) ->
+    child_spec(Opts#{id => ?name(worker, Name)}, PoolOpts).
 
 %% @doc Starts a worker.
 -spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
