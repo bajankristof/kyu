@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2022-12-15
+### Updated
+- redesigned the whole architecture of the project
+- the `kyu_channel` now interacts with channels directly
+- the `kyu_consumer` and `kyu_worker` modules are now more robust
+    - they require less channels
+    - the `kyu_wrangler` layer was completely removed, so workers now receive messages directly
+    - the `kyu_worker` module supports more optional callbacks (`init/1`, `handle_call/3`, `handle_cast/2`, `terminate/2`)
+    - consumer behaviour is more predictable due to a single `prefetch_count` option (`worker_count` was removed)
+    - `duplex` consumers now use a single channel to receive and publish messages
+    - workers can now retreive their channels using `kyu_worker:channel/0`
+- publishers can now be pooled using `kyu_publisher:child_spec/2` or `kyu_publisher:start_link/2`
+- publishers don't require you to set `mandatory` on a message when using the `supervised` execution mode
+
 ## [1.2.2] - 2021-05-31
 ### Fixed
 - `handle_info` callbacks overriding the whole worker state with incorrect data

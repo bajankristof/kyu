@@ -7,7 +7,7 @@
 * [Function Details](#functions)
 
 This module provides helper functions
-for amqp management.
+for AMQP management.
 
 <a name="types"></a>
 
@@ -20,7 +20,17 @@ for amqp management.
 
 
 <pre><code>
-message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt; binary(), mandatory =&gt; boolean(), type =&gt; binary(), headers =&gt; list(), priority =&gt; integer(), expiration =&gt; integer(), timestamp =&gt; integer(), content_type =&gt; binary(), content_encoding =&gt; binary(), delivery_mode =&gt; integer(), correlation_id =&gt; binary(), cluster_id =&gt; binary(), message_id =&gt; binary(), user_id =&gt; binary(), app_id =&gt; binary(), reply_to =&gt; binary(), execution =&gt; <a href="kyu_publisher.md#type-execution">kyu_publisher:execution()</a>, timeout =&gt; infinity | integer()}
+message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt; binary(), mandatory =&gt; boolean(), type =&gt; binary(), headers =&gt; list(), priority =&gt; integer(), expiration =&gt; integer(), timestamp =&gt; integer(), content_type =&gt; binary(), content_encoding =&gt; binary(), delivery_mode =&gt; integer(), correlation_id =&gt; binary(), cluster_id =&gt; binary(), message_id =&gt; binary(), user_id =&gt; binary(), app_id =&gt; binary(), reply_to =&gt; binary(), execution =&gt; <a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu_publisher.md#type-execution">kyu_publisher:execution()</a>, timeout =&gt; infinity | integer()}
+</code></pre>
+
+
+
+
+### <a name="type-name">name()</a> ###
+
+
+<pre><code>
+name() = term()
 </code></pre>
 
 <a name="index"></a>
@@ -28,7 +38,7 @@ message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt;
 ## Function Index ##
 
 
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-2">declare/2</a></td><td>Makes one or more declarations on the amqp channel.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Equivalent to <a href="kyu_publisher.md#publish-2"><tt>kyu_publisher:publish(Publisher, Message)</tt></a>.</td></tr></table>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#declare-2">declare/2</a></td><td>Makes one or more declarations on the AMQP channel.</td></tr><tr><td valign="top"><a href="#publish-2">publish/2</a></td><td>Equivalent to <a href="kyu_publisher.md#publish-2"><tt>kyu_publisher:publish(Publisher, Message)</tt></a>.</td></tr></table>
 
 
 <a name="functions"></a>
@@ -40,18 +50,18 @@ message() = #{routing_key =&gt; binary(), exchange =&gt; binary(), payload =&gt;
 ### declare/2 ###
 
 <pre><code>
-declare(Channel::<a href="kyu_channel.md#type-name">kyu_channel:name()</a>, Command::list() | tuple()) -&gt; ok
+declare(Channel::pid() | <a href="#type-name">name()</a>, Command::list() | tuple()) -&gt; ok
 </code></pre>
 <br />
 
-Makes one or more declarations on the amqp channel.
+Makes one or more declarations on the AMQP channel.
 
 <a name="publish-2"></a>
 
 ### publish/2 ###
 
 <pre><code>
-publish(Publisher::<a href="kyu_publisher.md#type-name">kyu_publisher:name()</a>, Message::<a href="#type-message">message()</a>) -&gt; ok | {error, binary()}
+publish(Publisher::<a href="#type-name">name()</a>, Message::<a href="#type-message">message()</a>) -&gt; ok | {error, binary()}
 </code></pre>
 <br />
 

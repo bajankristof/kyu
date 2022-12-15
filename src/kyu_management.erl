@@ -27,7 +27,7 @@
 
 %% @doc Returns the queues declared on the provided connection.
 %% <b>This function respects the virtual_host option of the connection</b>.
--spec get_queues(Connection :: kyu_connection:name()) -> response().
+-spec get_queues(Connection :: kyu:name()) -> response().
 get_queues(Connection) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
@@ -35,7 +35,7 @@ get_queues(Connection) ->
 
 %% @doc Returns details about the provided queue.
 %% <b>This function respects the virtual_host option of the connection</b>.
--spec get_queue(Connection :: kyu_connection:name(), Queue :: binary()) -> response().
+-spec get_queue(Connection :: kyu:name(), Queue :: binary()) -> response().
 get_queue(Connection, Queue) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
@@ -43,7 +43,7 @@ get_queue(Connection, Queue) ->
 
 %% @doc Returns the bindings declared on the provided queue.
 %% <b>This function respects the virtual_host option of the connection</b>.
--spec get_queue_bindings(Connection :: kyu_connection:name(), Queue :: binary()) -> response().
+-spec get_queue_bindings(Connection :: kyu:name(), Queue :: binary()) -> response().
 get_queue_bindings(Connection, Queue) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
@@ -51,28 +51,27 @@ get_queue_bindings(Connection, Queue) ->
 
 %% @doc Returns the bindings in an exchange declared on the provided queue.
 %% <b>This function respects the virtual_host option of the connection</b>.
--spec get_queue_bindings(Connection :: kyu_connection:name(), Queue :: binary(), Exchange :: binary()) -> response().
+-spec get_queue_bindings(Connection :: kyu:name(), Queue :: binary(), Exchange :: binary()) -> response().
 get_queue_bindings(Connection, Queue, Exchange) ->
     Network = kyu_connection:network(Connection),
     Vhost = kyu_network:get(virtual_host, Network),
     request(get, Connection, {"/bindings/~s/e/~s/q/~s", [Vhost, Exchange, Queue]}).
 
 %% @hidden
--spec get_url(Connection :: kyu_connection:name()) -> string().
+-spec get_url(Connection :: kyu:name()) -> string().
 get_url(Connection) ->
     Network = kyu_connection:network(Connection),
-    Opts = kyu_connection:option(Connection, management, #{}),
-    Host = maps:get(host, Opts,  kyu_network:get(host, Network)),
-    Port = maps:get(port, Opts, 15672),
-    {Prot, Socket, Args} = case Port of
+    Host = kyu_connection:option(Connection, management_host, kyu_network:get(host, Network)),
+    Port = kyu_connection:option(Connection, management_port, 15672),
+    {Protocol, Socket, Args} = case Port of
         80 -> {"http", "~s", [Host]};
         443 -> {"https", "~s", [Host]};
         _ -> {"http", "~s:~p", [Host, Port]}
     end,
-    io_lib:format(Prot ++ "://" ++ Socket ++ "/api", Args).
+    io_lib:format(Protocol ++ "://" ++ Socket ++ "/api", Args).
 
 %% @hidden
--spec get_headers(Connection :: kyu_connection:name()) -> list().
+-spec get_headers(Connection :: kyu:name()) -> list().
 get_headers(Connection) ->
     Network = kyu_connection:network(Connection),
     Username = kyu_network:get(username, Network),
@@ -81,14 +80,14 @@ get_headers(Connection) ->
     [{"Authorization", io_lib:format("Basic ~s", [Content])}].
 
 %% @equiv kyu_management:request(Method, Connection, Route, <<>>)
--spec request(Method :: method(), Connection :: kyu_connection:name(), Route :: route()) -> response().
+-spec request(Method :: method(), Connection :: kyu:name(), Route :: route()) -> response().
 request(Method, Connection, Route) ->
     request(Method, Connection, Route, <<>>).
 
 %% @doc Makes a request to the RabbitMQ management HTTP API.
 -spec request(
     Method :: method(),
-    Connection :: kyu_connection:name(),
+    Connection :: kyu:name(),
     Route :: route(),
     Body :: map() | list() | binary()
 ) -> response().
@@ -119,7 +118,7 @@ request(Method, Connection, Route, Body) ->
     end.
 
 %% @hidden
--spec declare(Channel :: kyu_channel:name(), Command :: tuple()) -> ok.
+-spec declare(Channel :: kyu:name(), Command :: tuple()) -> ok.
 declare(Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
     kyu:declare(Channel, #'queue.bind'{
         routing_key = Command#'kyu.queue.bind'.routing_key,
@@ -128,43 +127,37 @@ declare(Channel, #'kyu.queue.bind'{exclusive = false} = Command) ->
         arguments = Command#'kyu.queue.bind'.arguments
     });
 declare(Channel, #'kyu.queue.bind'{exclusive = true} = Command) ->
-    Key = Command#'kyu.queue.bind'.routing_key,
-    declare(Channel, #'kyu.queue.unbind'{
-        except = Key,
-        exchange = Command#'kyu.queue.bind'.exchange,
-        queue = Command#'kyu.queue.bind'.queue,
-        arguments = Command#'kyu.queue.bind'.arguments
-    }),
-    declare(Channel, Command#'kyu.queue.bind'{exclusive = false});
+    kyu:declare(Channel, [
+        Command#'kyu.queue.bind'{exclusive = false},
+        #'kyu.queue.unbind'{
+            except = Command#'kyu.queue.bind'.routing_key,
+            exchange = Command#'kyu.queue.bind'.exchange,
+            queue = Command#'kyu.queue.bind'.queue,
+            arguments = Command#'kyu.queue.bind'.arguments
+        }
+    ]);
 declare(Channel, #'kyu.queue.unbind'{} = Command) ->
     Connection = kyu_channel:connection(Channel),
-    {ok, Bindings} = get_queue_bindings(
-        Connection,
-        Command#'kyu.queue.unbind'.queue,
-        Command#'kyu.queue.unbind'.exchange
-    ),
-    lists:map(fun (Binding) ->
-        case match(Binding, Command) of
-            match ->
-                kyu:declare(Channel, #'queue.unbind'{
-                    routing_key = maps:get(<<"routing_key">>, Binding),
-                    exchange = Command#'kyu.queue.unbind'.exchange,
-                    queue = Command#'kyu.queue.unbind'.queue,
-                    arguments = Command#'kyu.queue.unbind'.arguments
-                });
-            nomatch -> ok
-        end
-    end, Bindings).
+    Queue = Command#'kyu.queue.unbind'.queue,
+    Exchange = Command#'kyu.queue.unbind'.exchange,
+    {ok, Bindings0} = get_queue_bindings(Connection, Queue, Exchange),
+    Bindings = lists:filter(fun (Binding) -> match(Binding, Command) end, Bindings0),
+    Commands = lists:map(fun (#{<<"routing_key">> := Key}) ->
+        #'queue.unbind'{
+            routing_key = Key,
+            exchange = Exchange,
+            queue = Queue,
+            arguments = Command#'kyu.queue.unbind'.arguments
+        }
+    end, Bindings),
+    kyu:declare(Channel, Commands).
 
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-match(_, #'kyu.queue.unbind'{except = <<>>, pattern = <<>>}) -> nomatch;
+match(_, #'kyu.queue.unbind'{except = <<>>, pattern = <<>>}) -> false;
 match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{except = <<>>} = Command) ->
     Regex = Command#'kyu.queue.unbind'.pattern,
-    re:run(Key, Regex, [global, {capture, none}]);
-match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{} = Command) ->
-    case Key =:= Command#'kyu.queue.unbind'.except of
-        false -> match;
-        _ -> nomatch
-    end.
+    match =:= re:run(Key, Regex, [global, {capture, none}]);
+match(#{<<"routing_key">> := Key}, #'kyu.queue.unbind'{except = Key}) -> false;
+match(_, _) -> true.

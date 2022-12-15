@@ -8,6 +8,7 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
+-define(FLAGS, {one_for_one, 10, 3600}).
 
 start_link(Connections) ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, Connections).

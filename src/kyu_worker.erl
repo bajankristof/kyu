@@ -6,232 +6,333 @@
 -behaviour(poolboy_worker).
 
 -export([
+    child_spec/1,
     child_spec/2,
+    start_link/1,
     start_link/2,
+    is_pool/1,
+    where/1,
     call/2,
-    call_each/2,
     call/3,
+    call_each/2,
     call_each/3,
     cast/2,
     cast_each/2,
     send/2,
     send_each/2,
+    channel/0,
+    channel/1,
     get_all/1,
-    message/2,
     transaction/2
 ]).
-
--export([start_link/1]).
 -export([
     init/1,
     handle_call/3,
     handle_cast/2,
-    handle_continue/2,
     handle_info/2,
     terminate/2
 ]).
 
 -include("amqp.hrl").
+-include("./_defaults.hrl").
 -include("./_macros.hrl").
 
--record(state, {
-    connection :: kyu_connection:name(),
-    name :: kyu_consumer:name(),
-    opts :: kyu_consumer:opts(),
-    module :: atom(),
-    args :: term(),
-    unacked = []
+-type opts() :: #{
+    name := kyu:name(),
+    channel := pid() | kyu:name(),
+    queue := binary(),
+    module := module(),
+    args := term(),
+    commands := list()
+}.
+-type pool_opts() :: #{
+    size := pos_integer(),
+    max_overflow := pos_integer(),
+    strategy := lifo | fifo
+}.
+-export_type([opts/0, pool_opts/0]).
+
+-record('worker.callbacks', {
+    init = false :: boolean(),
+    handle_message = false :: boolean(),
+    handle_call = false :: boolean(),
+    handle_cast = false :: boolean(),
+    handle_info = false :: boolean(),
+    terminate = false :: boolean()
 }).
 
--callback init(State :: term()) ->
-    {ok, term()} | {stop, term()}.
--callback handle_message(Message :: kyu:message(), State :: term()) ->
-    {ack, term()} | {reject, term()} | {remove, term()} | {stop, term(), term()}.
+-record(worker, {
+    module :: module(),
+    state :: term(),
+    callbacks :: #'worker.callbacks'{}
+}).
+
+-record(state, {
+    channel :: pid() | kyu:name(),
+    opts :: opts(),
+    tag :: term(),
+    worker :: #worker{}
+}).
+
+-define(matchCallback(Callback, Expect), #worker{callbacks = #'worker.callbacks'{Callback = Expect}}).
+
+-callback init(Args :: term()) ->
+    {ok, NewState :: term()}
+    | {stop, Reason :: term()}.
+-callback handle_call(Request :: term(), Caller :: gen_server:from(), State :: term()) ->
+    {reply, Reply :: term(), NewState :: term()}
+    | {noreply, NewState :: term()}
+    | {stop, Reason :: term(), NewState :: term()}.
+-callback handle_cast(Request :: term(), State :: term()) ->
+    {noreply, NewState :: term()}
+    | {stop, Reason :: term(), NewState :: term()}.
 -callback handle_info(Info :: term(), State :: term()) ->
-    {noreply, term()} | {stop, term(), term()}.
--callback terminate(Reason :: term(), State :: term()) ->
-    ok | {error, term()}.
--optional_callbacks([init/1, handle_info/2, terminate/2]).
+    {noreply, NewState :: term()}
+    | {stop, Reason :: term(), NewState :: term()}.
+-callback handle_message(Message :: kyu:message(), State :: term()) ->
+    {ack, NewState :: term()}
+    | {reject, NewState :: term()}
+    | {remove, NewState :: term()}
+    | {stop, Reason :: term(), NewState :: term()}.
+-callback terminate(Reason :: term(), State :: term()) -> term().
+-optional_callbacks([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
-%% @hidden
--spec child_spec(
-    Connection :: kyu_connection:name(),
-    Opts :: kyu_consumer:opts()
-) -> supervisor:child_spec().
-child_spec(Connection, #{name := Name} = Opts) ->
-    poolboy:child_spec(
-        ?name(pool, Name),
-        make_pool(Connection, Opts),
-        {Connection, Opts}
-    ).
+%% @doc Returns a worker child spec.
+-spec child_spec(Opts :: opts()) -> supervisor:child_spec().
+child_spec(#{id := Id} = Opts) ->
+    #{id => Id, start => {?MODULE, start_link, [Opts]}};
+child_spec(#{name := Name} = Opts) ->
+    child_spec(Opts#{id => ?name(worker, Name)}).
 
-%% @hidden
--spec start_link(
-    Connection :: kyu_connection:name(),
-    Opts :: kyu_consumer:opts()
-) -> {ok, pid()} | {error, term()}.
-start_link(Connection, Opts) ->
-    poolboy:start_link(
-        make_pool(Connection, Opts),
-        {Connection, Opts}
-    ).
+%% @doc Returns a worker pool child spec.
+-spec child_spec(Opts :: opts(), PoolOpts :: pool_opts()) -> supervisor:child_spec().
+child_spec(#{name := Name} = Opts, #{} = PoolOpts) ->
+    poolboy:child_spec(?name(worker, Name), make_pool_args(Opts, PoolOpts), maps:remove(name, Opts)).
 
-%% @hidden
--spec call(Name :: kyu_consumer:name(), Request :: term()) -> term().
-call(Name, Request) ->
-    transaction(Name, fun (Worker) ->
-        gen_server:call(Worker, Request)
-    end).
+%% @doc Starts a worker.
+-spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
+start_link(#{name := Name} = Opts) ->
+    gen_server:start_link(?via(worker, Name), ?MODULE, Opts, []);
+start_link(Opts) ->
+    gen_server:start_link(?MODULE, Opts, []).
 
-%% @hidden
--spec call(Name :: kyu_consumer:name(), Request :: term(), Timeout :: timeout()) -> term().
-call(Name, Request, Timeout) ->
-    transaction(Name, fun (Worker) ->
+%% @doc Starts a worker pool.
+-spec start_link(Opts :: opts(), PoolOpts :: pool_opts()) -> {ok, pid()} | {error, term()}.
+start_link(#{name := _} = Opts, #{} = PoolOpts) ->
+    poolboy:start_link(make_pool_args(Opts, PoolOpts), maps:remove(name, Opts)).
+
+%% @doc Returns whether the worker is pooled or not.
+-spec is_pool(Worker :: pid()) -> boolean.
+is_pool(Worker) when erlang:is_pid(Worker) ->
+    {dictionary, Info} = erlang:process_info(Worker, dictionary),
+    case proplists:get_value('$initial_call', Info) of
+        {?MODULE, _, _} -> false;
+        _ -> true
+    end.
+
+%% @doc Returns the pid of the worker or worker pool.
+%% -spec where(Name :: kyu:name()) -> pid() | undefined.
+where(Name) ->
+    gproc:where(?key(worker, Name)).
+
+%% @doc Makes a gen_server:call/2 to the worker or one of the workers.
+-spec call(Ref :: pid() | kyu:name(), Request :: term()) -> term().
+call(Ref, Request) ->
+    call(Ref, Request, ?DEFAULT_TIMEOUT).
+
+%% @doc Makes a gen_server:call/3 to the worker or one of the workers.
+-spec call(Ref :: pid() | kyu:name(), Request :: term(), Timeout :: timeout()) -> term().
+call(Ref, Request, Timeout) ->
+    transaction(Ref, fun (Worker) ->
         gen_server:call(Worker, Request, Timeout)
     end).
 
-%% @hidden
--spec call_each(Name :: kyu_consumer:name(), Request :: term()) -> list().
-call_each(Name, Request) ->
-    lists:map(fun (Worker) ->
-        gen_server:call(Worker, Request)
-    end, get_all(Name)).
+%% @doc Makes a gen_server:call/2 to all workers.
+-spec call_each(Ref :: pid() | kyu:name(), Request :: term()) -> list().
+call_each(Ref, Request) ->
+    call_each(Ref, Request, ?DEFAULT_TIMEOUT).
 
-%% @hidden
--spec call_each(Name :: kyu_consumer:name(), Request :: term(), Timeout :: timeout()) -> list().
-call_each(Name, Request, Timeout) ->
+%% @doc Makes a gen_server:call/3 to all workers.
+-spec call_each(Ref :: pid() | kyu:name(), Request :: term(), Timeout :: timeout()) -> list().
+call_each(Ref, Request, Timeout) ->
     lists:map(fun (Worker) ->
         gen_server:call(Worker, Request, Timeout)
-    end, get_all(Name)).
+    end, get_all(Ref)).
 
-%% @hidden
--spec cast(Name :: kyu_consumer:name(), Request :: term()) -> ok.
-cast(Name, Request) ->
-    transaction(Name, fun (Worker) ->
+%% @doc Makes a gen_server:cast/2 to the worker or one of the workers.
+-spec cast(Ref :: pid() | kyu:name(), Request :: term()) -> ok.
+cast(Ref, Request) ->
+    transaction(Ref, fun (Worker) ->
         gen_server:cast(Worker, Request)
     end).
 
-%% @hidden
--spec cast_each(Name :: kyu_consumer:name(), Request :: term()) -> ok.
-cast_each(Name, Request) ->
-    lists:foldl(fun (Worker, ok) ->
+%% @doc Makes a gen_server:cast/2 to all workers.
+-spec cast_each(Ref :: pid() | kyu:name(), Request :: term()) -> list().
+cast_each(Ref, Request) ->
+    lists:map(fun (Worker) ->
         gen_server:cast(Worker, Request)
-    end, ok, get_all(Name)).
+    end, get_all(Ref)).
 
-%% @doc Sends info to one of the worker processes (in round-robin fashion).
--spec send(Name :: kyu_consumer:name(), Info :: term()) -> term().
-send(Name, Info) ->
-    transaction(Name, fun (Worker) -> Worker ! Info end).
+%% @doc Sends info to the worker or one of the workers.
+-spec send(Ref :: pid() | kyu:name(), Info :: term()) -> term().
+send(Ref, Info) ->
+    transaction(Ref, fun (Worker) -> Worker ! Info end).
 
-%% @doc Sends info to all of the worker processes.
--spec send_each(Name :: kyu_consumer:name(), Info :: term()) -> list().
-send_each(Name, Info) ->
-    lists:map(fun (Worker) -> Worker ! Info end, get_all(Name)).
+%% @doc Sends info to all workers.
+-spec send_each(Ref :: pid() | kyu:name(), Info :: term()) -> list().
+send_each(Ref, Info) ->
+    lists:map(fun (Worker) -> Worker ! Info end, get_all(Ref)).
 
-%% @doc Returns the worker pids.
--spec get_all(Name :: kyu_consumer:name()) -> [pid()].
-get_all(Name) ->
-    Children = gen_server:call(?via(worker, Name), get_all_workers),
-    lists:foldl(fun
-        ({_, Worker, _, _}, Workers) when erlang:is_pid(Worker) ->
-            [Worker | Workers];
-        (_, Workers) -> Workers
-    end, [], Children).
+%% @doc Returns the pid of the current process' AMQP channel
+%% (if the current process is a worker).
+-spec channel() -> pid().
+channel() -> erlang:get('$kyu_channel').
 
-%% @hidden
--spec message(Name :: kyu_consumer:name(), Command :: tuple()) -> ok.
-message(Name, Command) ->
-    Worker = poolboy:checkout(?via(worker, Name)),
-    gen_server:cast(Worker, Command).
+%% @doc Returns the pid of the worker's AMQP channel.
+-spec channel(Ref :: pid() | kyu:name()) -> pid().
+channel(Ref) when not erlang:is_pid(Ref) ->
+    channel(where(Ref));
+channel(Ref) ->
+    {dictionary, Info} = erlang:process_info(Ref, dictionary),
+    proplists:get_value('$kyu_channel', Info).
 
 %% @hidden
--spec transaction(Name :: kyu_consumer:name(), Callback :: fun((pid()) -> term())) -> term().
-transaction(Name, Callback) ->
-    poolboy:transaction(?via(worker, Name), Callback).
+-spec get_all(Ref :: pid() | kyu:name()) -> [pid()].
+get_all(Ref) when not erlang:is_pid(Ref) ->
+    get_all(where(Ref));
+get_all(Ref) ->
+    case is_pool(Ref) of
+        true ->
+            Workers = gen_server:call(Ref, get_all_workers),
+            lists:foldl(fun
+                ({_, Pid, _, _}, Acc) when erlang:is_pid(Pid) ->
+                    [Pid | Acc];
+                (_, Acc) -> Acc
+            end, [], Workers);
+        false -> [Ref]
+    end.
+
+%% @hidden
+-spec transaction(Ref :: pid() | kyu:name(), Callback :: fun()) -> term().
+transaction(Ref, Callback) when not erlang:is_pid(Ref) ->
+    transaction(where(Ref), Callback);
+transaction(Worker, Callback) ->
+    case is_pool(Worker) of
+        true -> poolboy:transaction(Worker, Callback);
+        false -> Callback(Worker)
+    end.
 
 %% CALLBACK FUNCTIONS
 
 %% @hidden
-start_link({Connection, Opts}) ->
-    gen_server:start_link(?MODULE, {Connection, Opts}, []).
+init(#{channel := Channel, queue := Queue} = Opts) ->
+    erlang:put('$kyu_channel', Channel),
+    #'basic.qos_ok'{} = kyu_channel:call(Channel, #'basic.qos'{prefetch_count = 1, global = false}),
+    #'basic.consume_ok'{consumer_tag = Tag} = kyu_channel:call(Channel, #'basic.consume'{queue = Queue}),
+    State = #state{channel = Channel, opts = Opts, tag = Tag, worker = compile(Opts)},
+    do_init(State).
 
 %% @hidden
-init({Connection, #{name := Name} = Opts}) ->
-    State = #state{connection = Connection, name = Name,
-        opts = Opts, module = maps:get(worker_module, Opts),
-        args = maps:get(worker_state, Opts)},
-    case call_optional(State#state.module, init, [State#state.args]) of
-        {true, {ok, Args}} -> {ok, State#state{args = Args}};
-        {true, {stop, Stop}} -> {stop, Stop};
-        false -> {ok, State}
-    end.
+handle_call(Request, Caller, State) ->
+    do_handle_call(Request, Caller, State).
 
 %% @hidden
-handle_call(_, _, State) ->
-    {noreply, State}.
+handle_cast(Request, State) ->
+    do_handle_cast(Request, State).
 
 %% @hidden
-handle_cast({message, Tag, _, _} = Command, #state{unacked = Unacked} = State) ->
-    {noreply, State#state{unacked = [Tag | Unacked]}, {continue, Command}};
-handle_cast(_, State) ->
-    {noreply, State}.
+handle_info(#'basic.consume_ok'{}, State) ->
+    {noreply, State};
+handle_info({#'basic.deliver'{delivery_tag = Tag, routing_key = Key}, #amqp_msg{} = Content}, State) ->
+    Message = kyu_message:parse(Content, #{routing_key => Key}),
+    do_handle_message(Message, Tag, State);
+handle_info(Info, State) ->
+    do_handle_info(Info, State).
 
 %% @hidden
-handle_continue({message, Tag, Key, Content}, #state{module = Module, args = Args} = State) ->
-    Message = maps:put(routing_key, Key, kyu_message:parse(Content)),
-    case erlang:apply(Module, handle_message, [Message, Args]) of
-        {ack, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
-        {reject, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
-        {remove, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}};
-        {stop, _, _} = Return -> {noreply, State, {continue, {reply, Tag, Return}}}
-    end;
-handle_continue({reply, Tag, {Type, Args}}, #state{name = Name, unacked = Unacked} = State) ->
-    ok = kyu_wrangler:cast(Name, {Type, Tag}),
-    poolboy:checkin(?via(worker, Name), self()),
-    {noreply, State#state{args = Args, unacked = lists:delete(Tag, Unacked)}};
-handle_continue({noreply, {noreply, Args}}, #state{} = State) ->
-    {noreply, State#state{args = Args}};
-handle_continue({noreply, {stop, Stop, Args}}, #state{} = State) ->
-    {stop, Stop, State#state{args = Args}};
-handle_continue(_, State) ->
-    {noreply, State}.
-
-%% @hidden
-handle_info(Info, #state{module = Module, args = Args} = State) ->
-    case call_optional(Module, handle_info, [Info, Args]) of
-        {true, {noreply, _} = Return} -> {noreply, State, {continue, {noreply, Return}}};
-        {true, {stop, _, _} = Return} -> {noreply, State, {continue, {noreply, Return}}};
-        false -> {noreply, State}
-    end.
-
-%% @hidden
-terminate(Reason, #state{module = Module, args = Args} = State) ->
-    case call_optional(Module, terminate, [Reason, Args]) of
-        {true, Return} -> reject_all(State), Return;
-        false -> reject_all(State)
-    end.
+terminate(Reason, #state{channel = Channel, tag = Tag} = State) ->
+    #'basic.cancel_ok'{} = kyu_channel:call(Channel, #'basic.cancel'{consumer_tag = Tag}),
+    do_terminate(Reason, State).
 
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-call_optional(Module, Function, Args) ->
-    Arity = erlang:length(Args),
-    Exports = erlang:apply(Module, module_info, [exports]),
-    case lists:member({Function, Arity}, Exports) of
-        true -> {true, erlang:apply(Module, Function, Args)};
-        false -> false
+compile(#{module := Module} = Opts) ->
+    WState = maps:get(args, Opts, undefined),
+    #worker{module = Module, state = WState, callbacks = lists:foldl(fun
+        ({init, 1}, Acc) -> Acc#'worker.callbacks'{init = true};
+        ({handle_call, 3}, Acc) -> Acc#'worker.callbacks'{handle_call = true};
+        ({handle_cast, 2}, Acc) -> Acc#'worker.callbacks'{handle_cast = true};
+        ({handle_info, 2}, Acc) -> Acc#'worker.callbacks'{handle_info = true};
+        ({terminate, 2}, Acc) -> Acc#'worker.callbacks'{terminate = true};
+        (_, Acc) -> Acc
+    end, #'worker.callbacks'{}, Module:module_info(exports))}.
+
+%% @hidden
+update(WState, #state{worker = Worker} = State) ->
+    State#state{worker = Worker#worker{state = WState}}.
+
+%% @hidden
+do_init(#state{worker = ?matchCallback(init, false)} = State) ->
+    {ok, State};
+do_init(#state{worker = #worker{module = Module, state = WState0}} = State) ->
+    case Module:init(WState0) of
+        {ok, WState} -> {ok, update(WState, State)};
+        {stop, Reason} -> {stop, Reason}
     end.
 
 %% @hidden
-make_pool(_, #{name := Name} = Opts) ->
-    Count = maps:get(worker_count, Opts, 1),
-    Prefetch = maps:get(prefetch_count, Opts, 1),
-    Overflow = Count * Prefetch - Count,
-    [{size, Count}, {max_overflow, Overflow},
-        {name, ?via(worker, Name)}, {worker_module, ?MODULE}].
+do_handle_call(_, _, #state{worker = ?matchCallback(handle_call, false)} = State) ->
+    {noreply, State};
+do_handle_call(Request, Caller, #state{worker = #worker{module = Module, state = WState0}} = State) ->
+    case Module:handle_call(Request, Caller, WState0) of
+        {noreply, WState} -> {noreply, update(WState, State)};
+        {reply, Reply, WState} -> {reply, Reply, update(WState, State)};
+        {stop, Reason, WState} -> {stop, Reason, update(WState, State)}
+    end.
 
 %% @hidden
-reject_all(#state{name = Name, unacked = Unacked}) ->
-    lists:foldl(fun (Tag, _) ->
-        kyu_wrangler:cast(Name, {reject, Tag})
-    end, ok, Unacked).
+do_handle_cast(_, #state{worker = ?matchCallback(handle_cast, false)} = State) ->
+    {noreply, State};
+do_handle_cast(Request, #state{worker = #worker{module = Module, state = WState0}} = State) ->
+    case Module:handle_cast(Request, WState0) of
+        {noreply, WState} -> {noreply, update(WState, State)};
+        {stop, Reason, WState} -> {stop, Reason, update(WState, State)}
+    end.
+
+%% @hidden
+do_handle_info(_, #state{worker = ?matchCallback(handle_info, false)} = State) ->
+    {noreply, State};
+do_handle_info(Info, #state{worker = #worker{module = Module, state = WState0}} = State) ->
+    case Module:handle_info(Info, WState0) of
+        {noreply, WState} -> {noreply, update(WState, State)};
+        {stop, Reason, WState} -> {stop, Reason, update(WState, State)}
+    end.
+
+%% @hidden
+do_handle_message(Message, Tag, #state{worker = #worker{module = Module, state = WState0}} = State) ->
+    case Module:handle_message(Message, WState0) of
+        {Type, WState} -> do_reply(Type, Tag, update(WState, State));
+        {stop, Reason, WState} -> {stop, Reason, WState}
+    end.
+
+%% @hidden
+do_reply(ack, Tag, #state{channel = Channel} = State) ->
+    ok = kyu_channel:cast(Channel, #'basic.ack'{delivery_tag = Tag}),
+    {noreply, State};
+do_reply(reject, Tag, #state{channel = Channel} = State) ->
+    ok = kyu_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag, requeue = true}),
+    {noreply, State};
+do_reply(remove, Tag, #state{channel = Channel} = State) ->
+    ok = kyu_channel:cast(Channel, #'basic.reject'{delivery_tag = Tag, requeue = false}),
+    {noreply, State}.
+
+%% @hidden
+do_terminate(_, #state{worker = ?matchCallback(terminate, false)}) -> ok;
+do_terminate(Reason, #state{worker = #worker{module = Module, state = WState}}) ->
+    Module:terminate(Reason, WState).
+
+%% @hidden
+make_pool_args(#{name := Name}, #{} = PoolOpts0) ->
+    PoolOpts = maps:without([name, worker_module], PoolOpts0),
+    [{name, ?via(worker, Name)}, {worker_module, ?MODULE} | maps:to_list(PoolOpts)].

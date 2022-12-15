@@ -60,7 +60,7 @@ route() = string() | {string(), list()}
 ### get_queue/2 ###
 
 <pre><code>
-get_queue(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Queue::binary()) -&gt; <a href="#type-response">response()</a>
+get_queue(Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>, Queue::binary()) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 
@@ -72,7 +72,7 @@ __This function respects the virtual_host option of the connection__.
 ### get_queue_bindings/2 ###
 
 <pre><code>
-get_queue_bindings(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Queue::binary()) -&gt; <a href="#type-response">response()</a>
+get_queue_bindings(Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>, Queue::binary()) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 
@@ -84,7 +84,7 @@ __This function respects the virtual_host option of the connection__.
 ### get_queue_bindings/3 ###
 
 <pre><code>
-get_queue_bindings(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Queue::binary(), Exchange::binary()) -&gt; <a href="#type-response">response()</a>
+get_queue_bindings(Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>, Queue::binary(), Exchange::binary()) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 
@@ -96,7 +96,7 @@ __This function respects the virtual_host option of the connection__.
 ### get_queues/1 ###
 
 <pre><code>
-get_queues(Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>) -&gt; <a href="#type-response">response()</a>
+get_queues(Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 
@@ -108,7 +108,7 @@ __This function respects the virtual_host option of the connection__.
 ### request/3 ###
 
 <pre><code>
-request(Method::<a href="#type-method">method()</a>, Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Route::<a href="#type-route">route()</a>) -&gt; <a href="#type-response">response()</a>
+request(Method::<a href="#type-method">method()</a>, Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>, Route::<a href="#type-route">route()</a>) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 
@@ -119,7 +119,7 @@ Equivalent to [`kyu_management:request(Method, Connection, Route, <<>>)`](kyu_ma
 ### request/4 ###
 
 <pre><code>
-request(Method::<a href="#type-method">method()</a>, Connection::<a href="kyu_connection.md#type-name">kyu_connection:name()</a>, Route::<a href="#type-route">route()</a>, Body::map() | list() | binary()) -&gt; <a href="#type-response">response()</a>
+request(Method::<a href="#type-method">method()</a>, Connection::<a href="/Users/bajankristof/Projects/Erlang/kyu/doc/kyu.md#type-name">kyu:name()</a>, Route::<a href="#type-route">route()</a>, Body::map() | list() | binary()) -&gt; <a href="#type-response">response()</a>
 </code></pre>
 <br />
 

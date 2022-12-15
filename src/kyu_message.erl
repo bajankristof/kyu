@@ -1,50 +1,34 @@
 %% @hidden
 -module(kyu_message).
 
--export([validate/1, parse/1, props/1]).
+-export([parse/1, parse/2, compile/1]).
 
 -include("amqp.hrl").
 
 %% API FUNCTIONS
 
--spec validate(Message :: map()) -> true | false.
-validate(#{} = Message) ->
-    maps:fold(fun
-        (_, _, false) -> false;
-        (routing_key, Value, _) -> erlang:is_binary(Value);
-        (exchange, Value, _) -> erlang:is_binary(Value);
-        (payload, Value, _) -> erlang:is_binary(Value);
-        (mandatory, Value, _) -> erlang:is_boolean(Value);
-        (type, Value, _) -> erlang:is_binary(Value);
-        (headers, Value, _) -> erlang:is_list(Value);
-        (priority, Value, _) -> erlang:is_integer(Value);
-        (expiration, Value, _) -> erlang:is_integer(Value);
-        (timestamp, Value, _) -> erlang:is_integer(Value);
-        (content_type, Value, _) -> erlang:is_binary(Value);
-        (content_encoding, Value, _) -> erlang:is_binary(Value);
-        (delivery_mode, Value, _) -> erlang:is_integer(Value);
-        (correlation_id, Value, _) -> erlang:is_binary(Value);
-        (cluster_id, Value, _) -> erlang:is_binary(Value);
-        (message_id, Value, _) -> erlang:is_binary(Value);
-        (user_id, Value, _) -> erlang:is_binary(Value);
-        (app_id, Value, _) -> erlang:is_binary(Value);
-        (reply_to, Value, _) -> erlang:is_binary(Value);
-        (_, _, _) -> true
-    end, true, Message).
+-spec parse(Message :: #amqp_msg{}) -> kyu:message().
+parse(#amqp_msg{} = Message) ->
+    parse(Message, #{}).
 
--spec parse(Content :: #amqp_msg{}) -> kyu:message().
-parse(#amqp_msg{payload = Payload, props = Props}) ->
-    Info = record_info(fields, 'P_basic'),
-    Seq = lists:seq(2, erlang:length(Info) + 1),
-    Temp = lists:map(fun ({Index, Key}) ->
-        {Key, erlang:element(Index, Props)}
-    end, lists:zip(Seq, Info)),
-    maps:from_list([{payload, Payload} | Temp]).
+-spec parse(Message :: #amqp_msg{}, Acc0 :: map()) -> kyu:message().
+parse(#amqp_msg{payload = Payload, props = #'P_basic'{} = Props}, #{} = Acc0) ->
+    Keys = record_info(fields, 'P_basic'),
+    Indexes = lists:seq(2, record_info(size, 'P_basic')),
+    lists:foldl(fun (Index, Acc) ->
+        Key = lists:nth(Index - 1, Keys),
+        Acc#{Key => erlang:element(Index, Props)}
+    end, Acc0#{payload => Payload}, Indexes).
 
--spec props(Message :: kyu:message()) -> tuple().
-props(#{} = Message) ->
-    Info = record_info(fields, 'P_basic'),
-    Temp = lists:map(fun (Key) ->
-        maps:get(Key, Message, undefined)
-    end, Info),
-    erlang:list_to_tuple(['P_basic' | Temp]).
+-spec compile(Message :: kyu:message()) -> #amqp_msg{}.
+compile(#{} = Message) ->
+    Payload = maps:get(payload, Message, <<>>),
+    Keys = record_info(fields, 'P_basic'),
+    Indexes = lists:seq(2, record_info(size, 'P_basic')),
+    Props = lists:foldl(fun (Index, Acc) ->
+        Key = lists:nth(Index - 1, Keys),
+        Default = erlang:element(Index, Acc),
+        Value = maps:get(Key, Message, Default),
+        erlang:setelement(Index, Acc, Value)
+    end, #'P_basic'{}, Indexes),
+    #amqp_msg{payload = Payload, props = Props}.

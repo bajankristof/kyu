@@ -1,177 +1,195 @@
 %% @doc This module is responsible for creating
-%% and managing amqp publishers.
+%% and managing AMQP publishers.
 -module(kyu_publisher).
 
 -behaviour(gen_server).
+-behaviour(poolboy_worker).
 
 -export([
     child_spec/2,
+    child_spec/1,
     start_link/2,
+    start_link/1,
+    is_pool/1,
+    where/1,
     call/2,
     call/3,
     cast/2,
-    where/1,
-    status/1,
     connection/1,
     channel/1,
+    option/2,
     option/3,
     publish/2,
-    await/1,
-    await/2,
-    stop/1
+    stop/1,
+    transaction/2
 ]).
 
 -export([
     init/1,
     handle_call/3,
     handle_cast/2,
-    handle_continue/2,
     handle_info/2,
+    handle_continue/2,
     terminate/2
 ]).
 
 -include("amqp.hrl").
--include("./_macros.hrl").
 -include("./_defaults.hrl").
 -include("./_errors.hrl").
+-include("./_macros.hrl").
 
--type name() :: term().
 -type opts() :: #{
     id := supervisor:child_id(),
-    name := name(),
-    channel := kyu_channel:name(),
-    confirms := boolean()
+    name := kyu:name(),
+    connection := pid() | kyu:name(),
+    channel := pid() | kyu:name(),
+    confirms := boolean(),
+    commands := list()
+}.
+-type pool_opts() :: #{
+    size := pos_integer(),
+    max_overflow := pos_integer(),
+    strategy := lifo | fifo
 }.
 -type execution() :: sync | async | supervised.
--export_type([name/0, opts/0, execution/0]).
+-export_type([opts/0, pool_opts/0, execution/0]).
 
 -record(state, {
-    name :: name(),
-    connection :: kyu_connection:name(),
-    opts :: opts(),
-    channel :: kyu_channel:name(),
-    monitor = undefined :: reference(),
-    status = down :: up | down,
-    tags = #{}
-}).
-
--record(publish, {
-    command :: #'basic.publish'{},
-    props :: #'P_basic'{},
-    payload :: binary(),
-    execution :: execution()
+    channel = undefined :: pid(),
+    confirms = true :: boolean(),
+    buffer = gb_trees:empty() :: gb_trees:tree(),
+    opts = undefined :: map()
 }).
 
 %% API FUNCTIONS
 
 %% @doc Returns a publisher child spec.
--spec child_spec(Connection :: kyu_connection:name(), Opts :: opts()) -> supervisor:child_spec().
-child_spec(Connection, #{id := _} = Opts) ->
-    #{id => maps:get(id, Opts), start => {?MODULE, start_link, [Connection, Opts]}};
-child_spec(Connection, #{name := Name} = Opts) ->
-    child_spec(Connection, Opts#{id => ?name(publisher, Name)}).
+-spec child_spec(Opts :: opts()) -> supervisor:child_spec().
+child_spec(#{id := Id, name := _} = Opts) ->
+    #{id => Id, start => {?MODULE, start_link, [Opts]}};
+child_spec(#{name := Name} = Opts) ->
+    child_spec(Opts#{id => ?name(publisher, Name)}).
+
+%% @doc Returns a publisher pool child spec.
+-spec child_spec(Opts :: opts(), PoolOpts :: pool_opts()) -> supervisor:child_spec().
+child_spec(#{name := Name} = Opts, #{} = PoolOpts) ->
+    poolboy:child_spec(?name(publisher, Name), make_pool_args(Opts, PoolOpts), maps:remove(name, Opts)).
 
 %% @doc Starts a publisher.
--spec start_link(Connection :: kyu_connection:name(), Opts :: opts()) -> {ok, pid()} | {error, term()}.
-start_link(Connection, #{name := Name} = Opts) ->
-    gen_server:start_link(?via(publisher, Name), ?MODULE, {Connection, Opts}, []).
+-spec start_link(Opts :: opts()) -> {ok, pid()} | {error, term()}.
+start_link(#{name := Name} = Opts) ->
+    gen_server:start_link(?via(publisher, Name), ?MODULE, Opts, []);
+start_link(Opts) ->
+    gen_server:start_link(?MODULE, Opts, []).
 
-%% @doc Makes a gen_server:call/2 to the publisher.
--spec call(Name :: name(), Request :: term()) -> term().
-call(Name, Request) ->
-    gen_server:call(?via(publisher, Name), Request).
+%% @doc Starts a publisher pool.
+-spec start_link(Opts :: opts(), PoolOpts :: pool_opts()) -> {ok, pid()} | {error, term()}.
+start_link(#{name := _} = Opts, #{} = PoolOpts) ->
+    poolboy:start_link(make_pool_args(Opts, PoolOpts), maps:remove(name, Opts)).
 
-%% @doc Makes a gen_server:call/3 to the publisher.
--spec call(Name :: name(), Request :: term(), Timeout :: timeout()) -> term().
-call(Name, Request, Timeout) ->
-    gen_server:call(?via(publisher, Name), Request, Timeout).
-
-%% @doc Makes a gen_server:cast/2 to the publisher.
--spec cast(Name :: name(), Request :: term()) -> ok.
-cast(Name, Request) ->
-    gen_server:cast(?via(publisher, Name), Request).
-
-%% @doc Returns the pid of the publisher.
-%% -spec where(Name :: name()) -> pid() | undefined.
-where(Name) ->
-    gproc:where(?server(publisher, Name)).
-
-%% @doc Returns the up atom if the publisher is running and has an active channel.
--spec status(Name :: name()) -> up | down.
-status(Name) ->
-    case catch call(Name, status) of
-        {'EXIT', {noproc, _}} -> down;
-        Status -> Status
+%% @doc Returns whether the publisher is pooled or not.
+-spec is_pool(Publisher :: pid()) -> boolean.
+is_pool(Publisher) when erlang:is_pid(Publisher) ->
+    {dictionary, Info} = erlang:process_info(Publisher, dictionary),
+    case proplists:get_value('$initial_call', Info) of
+        {?MODULE, _, _} -> false;
+        _ -> true
     end.
 
-%% @doc Returns the name of the publisher's connection.
--spec connection(Name :: name()) -> kyu_connection:name().
-connection(Name) ->
-    call(Name, connection).
+%% @doc Returns the pid of the publisher.
+%% -spec where(Name :: kyu:name()) -> pid() | undefined.
+where(Name) ->
+    gproc:where(?key(publisher, Name)).
 
-%% @doc Returns the name of the publisher's channel.
--spec channel(Name :: name()) -> kyu_channel:name().
-channel(Name) ->
-    call(Name, channel).
+%% @doc Makes a gen_server:call/2 to the publisher.
+-spec call(Ref :: pid() | kyu:name(), Request :: term()) -> term().
+call(Ref, Request) ->
+    call(Ref, Request, ?DEFAULT_TIMEOUT).
+
+%% @doc Makes a gen_server:call/3 to the publisher.
+-spec call(Ref :: pid() | kyu:name(), Request :: term(), Timeout :: timeout()) -> term().
+call(Ref, Request, Timeout) ->
+    transaction(Ref, fun (Publisher) ->
+        gen_server:call(Publisher, Request, Timeout)
+    end).
+
+%% @doc Makes a gen_server:cast/2 to the publisher.
+-spec cast(Ref :: pid() | kyu:name(), Request :: term()) -> ok.
+cast(Ref, Request) ->
+    transaction(Ref, fun (Publisher) ->
+        gen_server:cast(Publisher, Request)
+    end).
+
+%% @doc Returns the name of the publisher's connection.
+-spec connection(Ref :: pid() | kyu:name()) -> kyu:name().
+connection(Ref) ->
+    call(Ref, connection).
+
+%% @doc Returns the pid of the publisher's channel.
+-spec channel(Ref :: pid() | kyu:name()) -> pid().
+channel(Ref) ->
+    call(Ref, channel).
+
+%% @equiv kyu_connection:option(Ref, Key, undefined)
+-spec option(Ref :: pid() | kyu:name(), Key :: atom()) -> term().
+option(Ref, Key) ->
+    option(Ref, Key, undefined).
 
 %% @doc Returns a value from the publisher's options.
--spec option(Name :: name(), Key :: atom(), Value :: term()) -> term().
-option(Name, Key, Value) ->
-    call(Name, {option, Key, Value}).
+-spec option(Ref :: pid() | kyu:name(), Key :: atom(), Value :: term()) -> term().
+option(Ref, Key, Value) ->
+    call(Ref, {option, Key, Value}).
 
 %% @doc Publishes a message on the channel.
--spec publish(Name :: name(), Message :: kyu:message()) -> ok | {error, binary()}.
-publish(Name, Message) ->
-    true = kyu_message:validate(Message),
+-spec publish(Ref :: pid() | kyu:name(), Message :: kyu:message()) -> ok | {error, binary()}.
+publish(Ref, #{} = Message) ->
     Timeout = maps:get(timeout, Message, ?DEFAULT_TIMEOUT),
-    call(Name, make_command(Message), Timeout).
-
-%% @equiv kyu_publisher:await(Name, 60000)
--spec await(Name :: name()) -> ok.
-await(Name) ->
-    await(Name, ?DEFAULT_TIMEOUT).
-
-%% @doc Waits for the publisher to successfully setup.
--spec await(Name :: name(), Timeout :: timeout()) -> ok.
-await(Name, Timeout) ->
-    Server = ?server(publisher, Name),
-    Leftover = kyu_waitress:await(Server, Timeout),
-    call(Name, await, Leftover).
+    call(Ref, {publish, Message}, Timeout).
 
 %% @doc Gracefully stops the publisher.
--spec stop(Name :: name()) -> ok.
-stop(Name) ->
-    gen_server:stop(?via(publisher, Name)).
+-spec stop(Ref :: pid() | kyu:name()) -> ok.
+stop(Ref) when not erlang:is_pid(Ref) ->
+    stop(where(Ref));
+stop(Publisher) ->
+    case is_pool(Publisher) of
+        true -> poolboy:stop(Publisher);
+        false -> gen_server:stop(Publisher)
+    end.
+
+%% @hidden
+-spec transaction(Ref :: pid() | kyu:name(), Callback :: fun()) -> term().
+transaction(Ref, Callback) when not erlang:is_pid(Ref) ->
+    transaction(where(Ref), Callback);
+transaction(Publisher, Callback) ->
+    case is_pool(Publisher) of
+        true -> poolboy:transaction(Publisher, Callback);
+        false -> Callback(Publisher)
+    end.
 
 %% CALLBACK FUNCTIONS
 
 %% @hidden
-init({Connection, #{name := Name} = Opts}) ->
-    {ok, #state{
-        name = Name,
-        connection = Connection,
-        opts = Opts,
-        channel = maps:get(channel, Opts, erlang:make_ref())
-    }, {continue, init}}.
+init(#{channel := Channel} = Opts) ->
+    do_init(Channel, Opts);
+init(#{connection := Connection} = Opts) ->
+    case kyu_channel:start(Connection) of
+        {ok, Channel} -> do_init(Channel, Opts);
+        {error, Reason} -> {stop, Reason}
+    end.
 
 %% @hidden
-handle_call(status, _, #state{status = Status} = State) ->
-    {reply, Status, State};
-handle_call(connection, _, #state{connection = Connection} = State) ->
-    {reply, Connection, State};
+handle_call(connection, _, #state{channel = Channel} = State) ->
+    {reply, kyu_channel:connection(Channel), State};
 handle_call(channel, _, #state{channel = Channel} = State) ->
     {reply, Channel, State};
 handle_call({option, Key, Value}, _, #state{opts = Opts} = State) ->
     {reply, maps:get(Key, Opts, Value), State};
-handle_call(#publish{}, _, #state{status = down} = State) ->
-    {reply, ?ERROR_NO_CHANNEL, State};
-handle_call(#publish{} = Command, Caller, #state{} = State) ->
-    handle_publish(Command, Caller, State);
-handle_call(await, _, #state{status = up} = State) ->
-    {reply, ok, State};
-handle_call(await, Caller, #state{name = Name} = State) ->
-    kyu_waitress:register(?event(publisher, Name), Caller),
-    {noreply, State};
+handle_call({publish, #{execution := supervised}}, _, #state{confirms = false} = State) ->
+    {reply, {error, ?ERROR_NOT_SUPPORTED}, State};
+handle_call({publish, #{execution := supervised} = Message}, Caller, State) ->
+    do_publish(Message#{message_id => kyu_uuid:new(), mandatory => true}, Caller, State);
+handle_call({publish, Message}, Caller, State) ->
+    do_publish(Message, Caller, State);
 handle_call(_, _, State) ->
     {noreply, State}.
 
@@ -180,103 +198,108 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 %% @hidden
-handle_continue(init, #state{opts = #{channel := Channel}} = State) ->
-    true = kyu_channel:subscribe(Channel),
-    case kyu_channel:status(Channel) of
-        up -> self() ! ?message(channel, Channel, up);
-        down -> ok
-    end,
-    {noreply, State};
-handle_continue(init, #state{connection = Connection, channel = Channel} = State) ->
-    true = kyu_channel:subscribe(Channel),
-    {ok, _} = kyu_channel:start_link(Connection, #{name => Channel}),
-    {noreply, State};
-handle_continue({init, _}, #state{status = down} = State) ->
-    {noreply, State};
-handle_continue({init, confirms}, #state{opts = #{confirms := false}} = State) ->
-    {noreply, State, {continue, {init, fin}}};
-handle_continue({init, confirms}, #state{channel = Channel} = State) ->
-    #'confirm.select_ok'{} = kyu_channel:apply(Channel, call, [#'confirm.select'{}]),
-    kyu_channel:apply(Channel, register_confirm_handler, [self()]),
-    {noreply, State, {continue, {init, fin}}};
-handle_continue({init, fin}, #state{name = Name} = State) ->
-    Callback = fun (Caller) -> gen_server:reply(Caller, ok) end,
-    kyu_waitress:deliver(?event(publisher, Name), Callback),
-    {noreply, State};
-handle_continue({reply, Tag, Return}, #state{tags = Tags} = State) ->
-    case maps:get(Tag, Tags, undefined) of
-        undefined -> {noreply, State};
-        Caller ->
-            gen_server:reply(Caller, Return),
-            {noreply, State#state{tags = maps:without([Tag], Tags)}}
-    end;
-handle_continue(_, State) ->
-    {noreply, State}.
-
-%% @hidden
-handle_info({#'basic.return'{reply_text = Text}, #amqp_msg{props = #'P_basic'{message_id = Tag}}}, State) ->
-    {noreply, State, {continue, {reply, Tag, {error, Text}}}};
-handle_info(#'basic.nack'{delivery_tag = Seq}, State) ->
-    {noreply, State, {continue, {reply, Seq, ?ERROR_NOT_CONFIRMED}}};
-handle_info(#'basic.ack'{delivery_tag = Seq}, State) ->
-    {noreply, State, {continue, {reply, Seq, ok}}};
-handle_info(?message(channel, Channel, up), #state{channel = Channel, status = up} = State) ->
-    {noreply, State};
-handle_info(?message(channel, Channel, up), #state{channel = Channel, opts = Opts} = State) ->
-    Monitor = erlang:monitor(process, kyu_channel:pid(Channel)),
-    ok = kyu:declare(Channel, maps:get(commands, Opts, [])),
-    kyu_channel:apply(Channel, register_return_handler, [self()]),
-    {noreply, State#state{monitor = Monitor, status = up}, {continue, {init, confirms}}};
-handle_info(?message(channel, Channel, down), #state{channel = Channel} = State) ->
-    {noreply, State#state{status = down}};
-handle_info({'DOWN', Monitor, _, _, _}, #state{monitor = Monitor} = State) ->
-    {noreply, State#state{status = down}};
+handle_info({'DOWN', _, process, Channel, Reason}, #state{channel = Channel} = State) ->
+    {stop, Reason, State};
+handle_info({#'basic.return'{reply_text = Reason}, #amqp_msg{props = #'P_basic'{message_id = MessageId}}}, State0) ->
+    do_reply(MessageId, {error, Reason}, State0);
+handle_info(#'basic.nack'{delivery_tag = Seqno}, State0) ->
+    do_reply(Seqno, {error, ?ERROR_NACK}, State0);
+handle_info(#'basic.ack'{delivery_tag = Seqno}, State0) ->
+    do_reply(Seqno, ok, State0);
 handle_info(_, State) ->
     {noreply, State}.
 
 %% @hidden
-terminate(_, #state{channel = Channel, status = up}) ->
-    kyu_channel:apply(Channel, unregister_return_handler, []),
-    kyu_channel:apply(Channel, unregister_confirm_handler, []);
-terminate(_, _) -> ok.
+handle_continue(setup, #state{channel = Channel} = State) ->
+    do_register_channel(Channel, State).
+
+%% @hidden
+terminate(_, #state{channel = Channel} = State) ->
+    do_deregister_channel(Channel, State),
+    do_close_channel(Channel, State).
 
 %% PRIVATE FUNCTIONS
 
 %% @hidden
-handle_publish(#publish{} = Command, _, #state{channel = Channel, opts = #{confirms := false}} = State) ->
-    ok = kyu_channel:apply(Channel, cast, make_args(Command, State)),
+do_init(Channel, Opts) ->
+    erlang:monitor(process, kyu_channel:where(Channel)),
+    ok = kyu:declare(maps:get(commands, Opts, [])),
+    Confirms = maps:get(confirms, Opts, true),
+    State = #state{channel = Channel, confirms = Confirms, opts = Opts},
+    {ok, State, {continue, setup}}.
+
+%% @hidden
+do_register_channel(Channel, #state{confirms = true} = State) ->
+    #'confirm.select_ok'{} = kyu_channel:call(Channel, #'confirm.select'{}),
+    ok = kyu_channel:apply(Channel, register_confirm_handler, [self()]),
+    ok = kyu_channel:apply(Channel, register_return_handler, [self()]),
+    {noreply, State};
+do_register_channel(_, State) ->
+    {noreply, State}.
+
+%% @hidden
+do_deregister_channel(_, #state{confirms = false}) -> ok;
+do_deregister_channel(Channel, _) ->
+    ok = kyu_channel:apply(Channel, unregister_confirm_handler),
+    ok = kyu_channel:apply(Channel, unregister_return_handler).
+
+%% @hidden
+do_close_channel(_, #state{opts = #{channel := _}}) -> ok;
+do_close_channel(Channel, _) ->
+    kyu_channel:stop(Channel).
+
+%% @hidden
+do_publish(#{} = Message, _, #state{channel = Channel, opts = #{confirms := false}} = State) ->
+    ok = kyu_channel:apply(Channel, cast, make_publish_args(Message, State)),
     {reply, ok, State};
-handle_publish(#publish{execution = async} = Command, _, #state{channel = Channel} = State) ->
-    ok = kyu_channel:apply(Channel, cast, make_args(Command, State)),
+do_publish(#{execution := async} = Message, _, #state{channel = Channel} = State) ->
+    ok = kyu_channel:apply(Channel, cast, make_publish_args(Message, State)),
     {reply, ok, State};
-handle_publish(#publish{execution = sync} = Command, Caller, #state{channel = Channel, tags = Tags} = State) ->
-    Seq = kyu_channel:apply(Channel, next_publish_seqno, []),
-    ok = kyu_channel:apply(Channel, call, make_args(Command, State)),
-    {noreply, State#state{tags = Tags#{Seq => Caller}}};
-handle_publish(#publish{execution = supervised} = Command, Caller, #state{channel = Channel, tags = Tags} = State) ->
-    Id = kyu_uuid:new(),
-    Supervised = make_supervised(Command, Id),
-    Seq = kyu_channel:apply(Channel, next_publish_seqno, []),
-    ok = kyu_channel:apply(Channel, call, make_args(Supervised, State)),
-    {noreply, State#state{tags = Tags#{Id => Caller, Seq => Caller}}}.
+do_publish(#{execution := supervised} = Message, Caller, #state{channel = Channel} = State) ->
+    MessageId = maps:get(message_id, Message),
+    Seqno = kyu_channel:apply(Channel, next_publish_seqno),
+    ok = kyu_channel:apply(Channel, call, make_publish_args(Message, State)),
+    {noreply, store_refs([MessageId, Seqno], Caller, State)};
+do_publish(#{} = Message, Caller, #state{channel = Channel} = State) ->
+    Seqno = kyu_channel:apply(Channel, next_publish_seqno),
+    ok = kyu_channel:apply(Channel, call, make_publish_args(Message, State)),
+    {noreply, store_refs([Seqno], Caller, State)}.
 
 %% @hidden
-make_args(#publish{command = Command, props = Props, payload = Payload}, _) ->
-    [Command, #amqp_msg{props = Props, payload = Payload}].
+do_reply(Key, Reply, #state{buffer = Buffer0} = State0) ->
+    case gb_trees:take_any(Key, Buffer0) of
+        {Caller, Buffer} ->
+            gen_server:reply(Caller, Reply),
+            State = State0#state{buffer = Buffer},
+            {noreply, delete_refs(Caller, State)};
+        _ -> {noreply, State0}
+    end.
 
 %% @hidden
-make_supervised(#publish{props = Props} = Command, Id) ->
-    Command#publish{props = Props#'P_basic'{message_id = Id}}.
+store_refs(Keys, Caller, #state{buffer = Buffer0} = State) ->
+    Buffer = lists:foldl(fun (Key, Acc) ->
+        gb_trees:insert(Key, Caller, Acc)
+    end, gb_trees:insert(Caller, Keys, Buffer0), Keys),
+    State#state{buffer = Buffer}.
 
 %% @hidden
-make_command(Message) ->
-    #publish{
-        command = #'basic.publish'{
-            routing_key = maps:get(routing_key, Message, <<>>),
-            exchange = maps:get(exchange, Message, <<>>),
-            mandatory = maps:get(mandatory, Message, false)
-        },
-        props = kyu_message:props(Message),
-        payload = maps:get(payload, Message, <<>>),
-        execution = maps:get(execution, Message, sync)
-    }.
+delete_refs(Caller, #state{buffer = Buffer0} = State) ->
+    case gb_trees:lookup(Caller, Buffer0) of
+        {value, Keys} ->
+            Buffer = lists:foldl(fun gb_trees:delete_any/2, Buffer0, [Caller | Keys]),
+            State#state{buffer = Buffer};
+        _ -> State
+    end.
+
+%% @hidden
+make_publish_args(#{} = Message, _) ->
+    [#'basic.publish'{
+        routing_key = maps:get(routing_key, Message, <<>>),
+        exchange = maps:get(exchange, Message, <<>>),
+        mandatory = maps:get(mandatory, Message, false)
+    }, kyu_message:compile(Message)].
+
+%% @hidden
+make_pool_args(#{name := Name}, #{} = PoolOpts0) ->
+    PoolOpts = maps:without([name, worker_module], PoolOpts0),
+    [{name, ?via(publisher, Name)}, {worker_module, ?MODULE} | maps:to_list(PoolOpts)].

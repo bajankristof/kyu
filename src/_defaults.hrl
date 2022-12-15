@@ -1,3 +1,3 @@
 -define(DEFAULT_TIMEOUT, 60000).
--define(DEFAULT_RETRY_SLEEP, 10000).
--define(DEFAULT_MAX_ATTEMPTS, infinity).
+-define(DEFAULT_RETRY_DELAY, 1000).
+-define(DEFAULT_RETRY_ATTEMPTS, infinity).
