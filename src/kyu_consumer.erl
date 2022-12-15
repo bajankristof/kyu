@@ -37,7 +37,7 @@
 -spec child_spec(Opts :: opts()) -> supervisor:child_spec().
 child_spec(#{id := Id, name := _} = Opts) ->
     ok = check_opts(Opts),
-    #{id => Id, start => {?MODULE, start_link, Opts}};
+    #{id => Id, start => {?MODULE, start_link, [Opts]}};
 child_spec(#{name := Name} = Opts) ->
     child_spec(Opts#{id => ?name(consumer, Name)}).
 
