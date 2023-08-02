@@ -2,7 +2,7 @@ version: '3.6'
 
 services:
     rabbitmq:
-        image: rabbitmq:3-management
+        image: rabbitmq:3-management-alpine
         container_name: kyu_rabbitmq
         ports:
             - 15672:15672
